@@ -65,6 +65,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     // Shelf like the tvOS 27 Dock: 5:3 icons (210 × 126) in each brand's color, 48 apart, and the glass bar hugging
     // them with 40 of padding (the focused icon grows 20% without touching its edge).
     private static final float SHELF_PAD = 40, TILE_GAP = 48;
+    private static final float BIG_CLOCK = 200, BIG_DATE = 38;     // the home screen's clock and date
     private static final float TILE_RADIUS = 22, TILE_MAX_W = 270;
     // Tile focus (Apple TV style): it grows from the center and its shadow drops (it "rises" toward the viewer).
     private static final float FOCUS_GROW = 0.2f;
@@ -269,7 +270,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!running) return;
-            recs.refreshIfStale();
             checkNotices();
             updatePalette();
             checkNight(true);
@@ -329,10 +329,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         lastNanos = 0;
         lastStep = 0;
         recs.addListener(this);
-        recs.refreshIfStale();
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         handler.postDelayed(tick, 15_000);
-        handler.postDelayed(rotate, ROTATE_MS);
         checkNotices();
         updateNet();
         reload();
@@ -393,7 +391,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     private void makeLightButtons() {
         lightButtons.clear();
         lightButtons.add(HomeApps.action(HomeApps.NETWORK, "network", netLabel(), "network"));
-        lightButtons.add(HomeApps.action(HomeApps.SETTINGS, "settings", Ui.tr("Configurações", "Settings"), "settings"));
+        lightButtons.add(HomeApps.action(HomeApps.ANDROID_SETTINGS, "settings",
+                Ui.tr("Configurações", "Settings"), "settings"));
     }
 
     // MARK: - Network button and clock pill (top right)
@@ -493,7 +492,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     @Override public void onRecs() {
         updatePicks();
         wake();
-        handler.postDelayed(this::warmTabs, 1500);     // after this tab's own cards
     }
 
     private void invalidateAll() {
@@ -610,7 +608,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         lastNanos = frameTimeNanos;
         long up = SystemClock.uptimeMillis();
 
-        boolean tilesMoving = step(tileFocus, dt);
+        boolean tilesMoving = step(tileFocus, dt) | shelfScroll.step(dt);
         boolean statusMoving = step(statusFocus, dt);
         boolean heroMoving = heroFocus.step(dt);
         boolean topMoving = step(topFocus, dt), cardsMoving = step(cardFocus, dt);
@@ -651,10 +649,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         if (updateClock()) {
             layoutStatus();
             status.invalidate();
-            if (hero != null && hero.clock) {
-                refreshHero(false);
-                heroLayer.invalidate();
-            }
+            heroLayer.invalidate();     // the big clock
         }
 
         // Busy: something is moving, or the sheet or the drawer is open.
@@ -1163,17 +1158,43 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     }
 
     private float dockScale = 1;
+    private float shelfEnd;     // how far the dock can scroll sideways (0: every app fits)
+    private final Spring shelfScroll = new Spring(0.3f, 1f, 0);
 
+    /** Scrolls the dock so the focused app sits inside the bar, with a peek of its neighbor on each side. */
+    private void aimScroll(boolean snap) {
+        if (shelfEnd <= 0 || tileRects.length == 0) {
+            shelfScroll.target = 0;
+        } else {
+            RectF r = tileRects[Math.min(shelfIndex, tileRects.length - 1)];
+            float pad = SHELF_PAD * k * dockScale;
+            float lo = platterRect.left + pad + r.width() * 0.4f, hi = platterRect.right - pad - r.width() * 0.4f;
+            float t = shelfScroll.target;
+            if (r.left - t < lo) t = r.left - lo;
+            if (r.right - t > hi) t = r.right - hi;
+            shelfScroll.target = Math.max(0, Math.min(shelfEnd, t));
+        }
+        if (snap) shelfScroll.snap(shelfScroll.target);
+    }
+
+    /**
+     * The dock: every app, left to right, centered on its glass bar. Many apps shrink the tiles (down to 3/4); past
+     * that, the bar spans the content width and the apps scroll sideways inside it (aimScroll).
+     */
     private void layoutShelf() {
         int n = shelf.size();
         // Smaller docks (Lume settings) shrink everything and keep the same bottom edge.
         float ds = dockScale = Prefs.dockScale(getContext());
         float pad = SHELF_PAD * k * ds, gap = TILE_GAP * k * ds, th = L_TILE_H * k * ds;
-        float full = (CONTENT_R - MARGIN) * k;
-        float tw = Math.min(TILE_MAX_W * k * ds, (full - Math.max(0, n - 1) * gap) / Math.max(1, n));
-        float width = n * tw + Math.max(0, n - 1) * gap, left = (w - width) / 2f;
+        float full = (CONTENT_R - MARGIN) * k - 2 * pad;
+        float tw = TILE_MAX_W * k * ds;
+        tw = Math.max(tw * 0.75f, Math.min(tw, (full - Math.max(0, n - 1) * gap) / Math.max(1, n)));
+        th = tw * L_TILE_H / TILE_MAX_W;
+        float width = n * tw + Math.max(0, n - 1) * gap;
+        float inner = Math.min(width, full), left = (w - inner) / 2f;
         float top = (L_PLATTER_TOP + (1 - ds) * (L_TILE_H + 2 * SHELF_PAD)) * k;
-        platterRect.set(left - pad, top, left + width + pad, top + th + 2 * pad);
+        platterRect.set(left - pad, top, left + inner + pad, top + th + 2 * pad);
+        shelfEnd = Math.max(0, width - inner);
         float x = left, y = top + pad;
         for (int i = 0; i < n; i++) {
             tileRects[i].set(x, y, x + tw, y + th);
@@ -1201,6 +1222,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     }
 
     private void drawTiles(Canvas c) {
+        if (shelfEnd <= 0) {
+            drawDock(c);
+            return;
+        }
+        // Scrolling: the apps slide inside the bar (cut at its sides, with room above and below for the focus).
+        c.save();
+        float pad = SHELF_PAD * k * dockScale;
+        c.clipRect(platterRect.left + pad * 0.5f, 0, platterRect.right - pad * 0.5f, h);
+        c.translate(-shelfScroll.value, 0);
+        drawDock(c);
+        c.restore();
+    }
+
+    private void drawDock(Canvas c) {
         // The focused one last: it grows over its neighbors without being covered by them.
         int top = -1;
         float most = 0.02f;
@@ -1605,6 +1640,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     private void retarget(boolean snap) {
         // Only the group whose focus changed is redrawn (moving along the shelf doesn't redraw the hero or capsule).
         boolean tilesChanged = aim(tileFocus, !sheetOpen && zone == Z_SHELF ? shelfIndex : -1, snap);
+        if (zone == Z_SHELF) aimScroll(snap);
         boolean statusChanged = aim(statusFocus, !sheetOpen && zone == Z_STATUS ? statusIndex : -1, snap);
         boolean drawerChanged = aim(drawerFocus, !sheetOpen && zone == Z_DRAWER ? drawerIndex : -1, snap);
         boolean heroChanged = heroFocus.target != (!sheetOpen && zone == Z_HERO ? 1 : 0);
@@ -1846,10 +1882,25 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
 
     // MARK: - Lists (in the background, so returning to the home screen isn't delayed)
 
+    /** The home screen's dock: its own apps (logos, in their order), then every other installed app, by name. */
+    private static List<HomeApps.Item> allDockApps(Context c) {
+        List<HomeApps.Item> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (HomeApps.Item it : HomeApps.shelf(c, true)) {
+            if (it.kind != HomeApps.APP || it.pkg == null || !seen.add(it.pkg)) continue;
+            it.inDock = true;
+            out.add(it);
+        }
+        for (HomeApps.Item it : HomeApps.others(c)) {
+            if (it.kind == HomeApps.APP && it.pkg != null && seen.add(it.pkg)) out.add(it);
+        }
+        return out;
+    }
+
     private void reload() {
         final Context c = getContext().getApplicationContext();
         LOADER.execute(() -> {
-            final List<HomeApps.Item> s = HomeApps.shelf(c, true);
+            final List<HomeApps.Item> s = allDockApps(c);
             final List<HomeApps.Item> st = statusList(c);
             final List<HomeApps.Item> d = drawerList(c);
             final List<HomeApps.Item> o = HomeApps.others(c);
@@ -1986,7 +2037,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     private boolean moving;
 
     private boolean holdOk() {
-        if (!sheetOpen && zone == Z_SHELF && !shelf.isEmpty() && shelf.get(shelfIndex).kind == HomeApps.APP) {
+        if (!sheetOpen && zone == Z_TOP && topIndex >= 3 && topIndex - 3 < lightButtons.size()
+                && lightButtons.get(topIndex - 3).kind == HomeApps.ANDROID_SETTINGS) {
+            // Hold OK on the gear: Lume's own settings (a press opens the TV's).
+            click.open();
+            RectF r = topRects[topIndex];
+            HomeApps.open(activity, HomeApps.action(HomeApps.SETTINGS, "lume-settings", "Lume", "settings"), this,
+                    Math.round(r.left), Math.round(r.top), Math.round(r.width()), Math.round(r.height()));
+            return true;
+        }
+        if (!sheetOpen && zone == Z_SHELF && !shelf.isEmpty() && shelf.get(shelfIndex).kind == HomeApps.APP
+                && shelf.get(shelfIndex).inDock) {
             // Hold OK on a shelf app: pick it up to move it.
             moving = true;
             click.open();
@@ -2000,7 +2061,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
 
     private void moveApp(int dx) {
         int to = shelfIndex + dx;
-        if (to < 0 || to >= shelf.size()) return;
+        if (to < 0 || to >= shelf.size() || !shelf.get(to).inDock) return;
         List<HomeApps.Item> list = new ArrayList<>(shelf);
         HomeApps.Item it = list.remove(shelfIndex);
         list.add(to, it);
@@ -2016,7 +2077,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         moving = false;
         click.open();
         final List<String> order = new ArrayList<>();
-        for (HomeApps.Item it : shelf) if (it.pkg != null) order.add(it.pkg);
+        for (HomeApps.Item it : shelf) if (it.pkg != null && it.inDock) order.add(it.pkg);
         final Context c = getContext().getApplicationContext();
         LOADER.execute(() -> HomeApps.setDockOrder(c, order));
         tilesDirty = true;
@@ -2045,17 +2106,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
                     if (next == shelfIndex) return;
                     shelfIndex = next;
                 } else if (dy < 0) {
-                    if (hero != null && hero.button) {
-                        zone = Z_HERO;
-                    } else if (!statusItems.isEmpty()) {
-                        zone = Z_STATUS;
-                        statusIndex = shelf.isEmpty() ? 0 : nearest(statusRects, tileRects[shelfIndex].centerX());
-                    } else {
-                        return;
-                    }
+                    if (lightButtons.isEmpty()) return;
+                    zone = Z_TOP;
+                    topIndex = 3 + lightButtons.size() - 1;     // the gear
                 } else {
-                    if (drawerItems.isEmpty()) return;
-                    openDrawer();     // the panel with the shortcuts and the inputs rises from below
+                    return;
                 }
                 break;
             case Z_HERO:
@@ -2198,7 +2253,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         } else {
             if (shelf.isEmpty()) return;
             it = shelf.get(shelfIndex);
-            r = tileRects[shelfIndex];
+            r = new RectF(tileRects[shelfIndex]);
+            r.offset(-shelfScroll.value, 0);     // where it is on screen, the dock scrolled
         }
         click.open();
         if (it.kind == HomeApps.ALL_APPS) {
@@ -2338,6 +2394,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
 
     /** The cards in view: three in a row from the tab's pool, starting at `rotation`. */
     private List<Recs.Pick> windowCards() {
+        if (recsOff) return new ArrayList<>();
         List<Recs.Pick> pool = recs.pool(TAB_KIND[tab]);
         if (pool.size() <= 3) return recs.now(TAB_KIND[tab]);
         List<Recs.Pick> out = new ArrayList<>();
@@ -2360,13 +2417,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         }
         for (Recs.Pick p : list) recs.backdrop(p);
         Backdrop b = cards.isEmpty() ? null : recs.backdrop(cards.get(0));
-        boolean off = !Prefs.recsOn(getContext());
-        if (off != recsOff) {
-            recsOff = off;
-            if (off && zone == Z_TOP && topIndex < 3) topIndex = 3;
-            retarget(false);
-            invalidateAll();
-        }
         int color = Prefs.bgColor(getContext());
         if (color != bgColor) {
             bgColor = color;
@@ -2374,7 +2424,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
             sky.invalidate();
         }
         if (bgColor >= 0) b = null;     // solid color: the plain gradient, no photo to fetch, decode or draw
-        else if (cards.isEmpty() && !Recs.hasKey(getContext())) b = wallpaper();
+        else b = wallpaper();
         if (cards.isEmpty() || b != null) showBackdrop(b);
         heroDirty = true;
     }
@@ -2383,7 +2433,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
 
     private LinearGradient wallScrim;
     private float wallScrimNight = -1;
-    private boolean recsOff;            // recommendations turned off: no tabs or cards, just the wallpaper
+    private final boolean recsOff = true;   // the home screen has no tabs or cards: the clock, the apps and the wallpaper
     private String wallName;            // the wallpaper shown (or being loaded)
     private Backdrop wallBackdrop;
     private boolean wallLoading;
@@ -2509,9 +2559,38 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         if (night > 0.001f) drawImage(c, b.nightImage, alpha * night);
     }
 
+    private Paint bigClock, bigDate;
+
+    /** On the left, centered top to bottom: the time in large thin digits and the date under it. */
+    private void drawBigClock(Canvas c) {
+        if (clockText.isEmpty()) return;
+        if (bigClock == null || bigClock.getTextSize() != BIG_CLOCK * k) {
+            bigClock = Ui.numbers(Ui.displayMedium, BIG_CLOCK * k, L_INK);
+            bigClock.setLetterSpacing(-0.03f);
+            bigDate = Ui.text(Ui.medium, BIG_DATE * k, L_DIM);
+        }
+        // Over a photo, a soft shadow keeps them readable; on a solid color they sit flat.
+        boolean photo = bgColor < 0 && bgTo != null;
+        for (Paint p : new Paint[] {bigClock, bigDate}) {
+            if (photo) p.setShadowLayer(24 * k, 0, 2 * k, tone(0x33000000, 0x66000000));
+            else p.clearShadowLayer();
+        }
+        bigClock.setColor(tone(L_INK, WHITE));
+        bigDate.setColor(tone(L_DIM, 0xB3FFFFFF));
+        String date = Ui.date(System.currentTimeMillis());
+        if (!date.isEmpty()) date = Character.toUpperCase(date.charAt(0)) + date.substring(1);
+        float cap = Ui.cap(bigClock), x = MARGIN * k;
+        float base = (L_PLATTER_TOP * k) / 2 + cap / 2;     // centered in the room above the dock
+        c.drawText(clockText, x - Ui.leftBearing(bigClock, clockText), base, bigClock);
+        c.drawText(date, x - Ui.leftBearing(bigDate, date), base + 84 * k, bigDate);
+    }
+
     private void drawLightTop(Canvas c) {
         applyTone();
-        if (recsOff) return;     // without recommendations, no title: just the wallpaper and the buttons
+        if (recsOff) {     // the home screen: the big clock and the date on the left, the apps on the right
+            drawBigClock(c);
+            return;
+        }
         String hello = Ui.tr("Para você", "For You");
         c.drawText(hello, MARGIN * k - Ui.leftBearing(lTitle, hello), L_TITLE_BASE * k, lTitle);
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
@@ -2656,7 +2735,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
      */
     private void drawLightButtons(Canvas c) {
         applyTone();
-        drawClockPill(c);
         for (int i = 0; i < lightButtons.size(); i++) {
             RectF r = topRects[3 + i];
             float f = Ui.clamp(topFocus[3 + i].value), s = 1 + 0.1f * f, rad = r.width() / 2 * s;
@@ -2687,15 +2765,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     private boolean moveLight(int dx, int dy) {
         switch (zone) {
             case Z_SHELF:
-                if (dy >= 0 || shelf.isEmpty()) return false;
-                if (cards.isEmpty()) {
-                    zone = Z_TOP;
-                    topIndex = recsOff ? 3 : tab;   // no tabs without recommendations: the buttons
-                } else {
-                    zone = Z_CARDS;
-                    cardIndex = nearest(cardRects, cards.size(), tileRects[shelfIndex].centerX());
-                }
-                break;
+                return false;
             case Z_CARDS:
                 if (dx != 0) {
                     int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
@@ -2722,6 +2792,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
                     if (topIndex < 3) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
                 } else if (dy > 0) {
                     if (cards.isEmpty()) {
+                        if (shelf.isEmpty()) return true;
                         zone = Z_SHELF;
                     } else {
                         zone = Z_CARDS;

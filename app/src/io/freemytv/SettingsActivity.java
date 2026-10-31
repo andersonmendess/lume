@@ -227,7 +227,7 @@ public class SettingsActivity extends Activity {
         private final Scene scene = new Scene();
         private Click click;
         private final Handler handler = new Handler(Looper.getMainLooper());
-        private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 12)
+        private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 10)
         private final RectF tmp = new RectF(), rowRect = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
         private String busyText = "";
@@ -387,7 +387,7 @@ public class SettingsActivity extends Activity {
 
         private int rowCount() {
             return screen == MAIN ? MAIN_ROWS : screen == RECS ? 5 : screen == THEME ? 3 : screen == WALL ? 4
-                    : screen == UPDATE ? updateRows() : screen == HOMESCR ? 12 : screen == SAVER ? 3 : 2;
+                    : screen == UPDATE ? updateRows() : screen == HOMESCR ? 10 : screen == SAVER ? 3 : 2;
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -527,8 +527,8 @@ public class SettingsActivity extends Activity {
 
         private static final String[] MAIN_ICONS = {"home", "tv", "bedtime", "sync"};
         private static final int[] MAIN_COLORS = {0xFF5E5CE6, 0xFF0A84FF, 0xFFBF5AF2, 0xFF30D158};
-        private static final String[] HOME_ICONS = {"clear_night", "sparkles", "apps", "tv", "home", "sparkles", "sparkles", "sparkles", "home", "sparkles", "speaker", "live_tv"};
-        private static final int[] HOME_COLORS = {0xFF636366, 0xFFFF9F0A, 0xFF0A84FF, 0xFF30D158, 0xFFBF5AF2, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFFFF375F, 0xFFFF453A};
+        private static final String[] HOME_ICONS = {"clear_night", "sparkles", "apps", "tv", "home", "sparkles", "sparkles", "sparkles", "home", "speaker"};
+        private static final int[] HOME_COLORS = {0xFF636366, 0xFFFF9F0A, 0xFF0A84FF, 0xFF30D158, 0xFFBF5AF2, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF5E5CE6, 0xFFFF375F};
 
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
@@ -613,7 +613,7 @@ public class SettingsActivity extends Activity {
 
         private int[] sectionStarts() {
             if (screen == MAIN) return new int[] {0, 3};
-            if (screen == HOMESCR) return new int[] {0, 5, 10};
+            if (screen == HOMESCR) return new int[] {0, 5, 9};
             return new int[] {0};
         }
 
@@ -890,19 +890,16 @@ public class SettingsActivity extends Activity {
             if (screen == HOMESCR) {
                 String[][] t = {
                     {Ui.tr("Tema", "Theme"), Ui.tr("Claro, escuro ou automático (escuro das 18h às 6h).", "Light, dark or automatic (dark from 6 PM to 6 AM).")},
-                    {Ui.tr("Fundo", "Background"), Ui.tr("Recomendações mostra os filmes e séries em alta. Papel de parede deixa só a foto e o relógio. Cor sólida é o mais leve: sem fotos para baixar.", "Recommendations shows what's trending. Wallpaper leaves just the photo and the clock. Solid color is the lightest: no photos to download.")},
-                    {Prefs.recsOn(getContext()) ? Ui.tr("Recomendações", "Recommendations") : Ui.tr("Papel de parede", "Wallpaper"),
-                            Prefs.recsOn(getContext()) ? Ui.tr("Chave do TMDB, categorias e o que o OK no card abre.", "TMDB key, genres and what OK on a card opens.")
-                                    : Ui.tr("A fonte das imagens e qual aparece em cada modo.", "Where the images come from and which shows in each mode.")},
+                    {Ui.tr("Fundo", "Background"), Ui.tr("Papel de parede: uma foto atrás do relógio e da dock. Cor sólida é o mais leve: sem fotos para baixar.", "Wallpaper: a photo behind the clock and the dock. Solid color is the lightest: no photos to download.")},
+                    bgColorName() != null ? new String[] {Ui.tr("Cor", "Color"), Ui.tr("Troque a cor do fundo.", "Pick another background color.")}
+                            : new String[] {Ui.tr("Papel de parede", "Wallpaper"), Ui.tr("A fonte das imagens e qual aparece em cada modo.", "Where the images come from and which shows in each mode.")},
                     {Ui.tr("Ícones da barra", "Shelf icons"), Ui.tr("Seguir o tema: cards claros ou escuros como o Início. Arte original: as cores de cada app.", "Follow the theme: light or dark cards like the home screen. App's own art: each app's colors.")},
                     {Ui.tr("Tamanho da dock", "Dock size"), Ui.tr("Grande, média ou pequena. A barra encolhe e fica no mesmo lugar.", "Large, medium or small. The bar shrinks and stays in place.")},
-                    {Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Uma borda fina na pílula do relógio e nos botões do topo.", "A thin outline on the clock pill and the top buttons.")},
-                    {Ui.tr("Fundo no topo", "Top background"), Ui.tr("O fundo de vidro da pílula e dos botões do topo. Desligado, ficam só os ícones e o texto.", "The glass behind the top pill and buttons. Off, just the icons and text.")},
+                    {Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Uma borda fina nos botões do topo.", "A thin outline on the top buttons.")},
+                    {Ui.tr("Fundo no topo", "Top background"), Ui.tr("O fundo de vidro dos botões do topo. Desligado, ficam só os ícones.", "The glass behind the top buttons. Off, just the icons.")},
                     {Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Uma borda fina em volta da dock, com ou sem o fundo.", "A thin outline around the dock, with or without its background.")},
                     {Ui.tr("Fundo da dock", "Dock background"), Ui.tr("A barra de vidro atrás dos apps. Desligado, ficam só os ícones.", "The glass bar behind the apps. Off, just the icons.")},
-                    {Ui.tr("Bordas do painel", "Panel outlines"), Ui.tr("Uma borda fina nos cards de atalhos e entradas que abrem ao descer.", "A thin outline on the shortcuts and inputs cards below the shelf.")},
-                    {Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("Os cliques suaves ao mover o foco.", "The soft clicks when moving the focus.")},
-                    {Ui.tr("TV ao Vivo", "Live TV"), Ui.tr("O app do atalho de TV ao Vivo, no painel que abre ao descer.", "The app of the Live TV shortcut, in the panel below the shelf.")}};
+                    {Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("Os cliques suaves ao mover o foco.", "The soft clicks when moving the focus.")}};
                 return t[Math.min(focus, t.length - 1)];
             }
             return null;
@@ -924,12 +921,11 @@ public class SettingsActivity extends Activity {
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
             // What the preview shows follows what has focus: the theme and the background.
             Context ctx = getContext();
-            boolean dark = !light, recsOn = Prefs.recsOn(ctx);
+            boolean dark = !light;
             android.graphics.Bitmap pick = null;
             if (screen == THEME && popup == NO_POPUP) {
                 dark = focus == 2 || (focus == 0 && Ui.isNight(System.currentTimeMillis()));
             }
-            if (popup == BG_POPUP) recsOn = popupFocus == 0;
             float ds = popup == SIZE_POPUP ? new float[] {1f, 0.84f, 0.68f}[Math.min(2, popupFocus)] : Prefs.dockScale(ctx);
             boolean art = popup == ART_POPUP ? popupFocus == 1 : Prefs.shelfArt(ctx);
             boolean topRim = Prefs.topBorders(ctx), topBg = Prefs.topBackground(ctx);
@@ -942,11 +938,10 @@ public class SettingsActivity extends Activity {
                 synchronized (wpThumbs) {
                     pick = wpThumbs.get(wpNames().get(popupFocus));
                 }
-                recsOn = false;
             }
-            // With recommendations the home screen's background is the frosted photo; with a wallpaper, the photo itself.
-            android.graphics.Bitmap pic = pick != null ? pick : recsOn ? blurBg : homeThumb;
-            int previewColor = popup == BG_POPUP ? popupFocus - 2 : recsOn ? -1 : Prefs.bgColor(ctx);
+            // The wallpaper itself, or the solid color (the one under focus while choosing).
+            android.graphics.Bitmap pic = pick != null ? pick : homeThumb;
+            int previewColor = popup == BG_POPUP ? popupFocus - 1 : Prefs.bgColor(ctx);
             if (previewColor >= 0 && previewColor < HomeView.BG_COLORS.length) {
                 int[] shade = HomeView.BG_COLORS[previewColor];
                 p.setShader(new android.graphics.LinearGradient(0, frame.top, 0, frame.bottom,
@@ -962,24 +957,16 @@ public class SettingsActivity extends Activity {
             c.drawRect(frame, p);
             float u = pw / 1920f;
             int glass = dark ? 0xA6111113 : 0xB3FFFFFF, ink = dark ? 0xF2FFFFFF : 0xFF1D1D1F;
-            // On "Bordas do painel": only the panel that opens below the shelf, over the blurred background.
-            if (screen == HOMESCR && focus == 9 && popup == NO_POPUP) {
-                drawMiniPanel(c, frame, u, dark, ink, Prefs.panelBorders(ctx), rim);
-                c.restore();
-                return;
-            }
             p.setColor(glass);
-            // Top, live: the clock, the network and Settings buttons.
+            // Top right, live: the network and Settings buttons. On the left, the big clock and the date.
             Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            Paint pill = Ui.text(Ui.semibold, 30 * u, ink);
-            String clock = Ui.clock(System.currentTimeMillis());
-            float clockW = pill.measureText(clock) + 60 * u;
-            float clockRight = 1650;
-            RectF cr = new RectF(frame.left + clockRight * u - clockW, frame.top + 70 * u, frame.left + clockRight * u, frame.top + 136 * u);
-            if (topBg) c.drawRoundRect(cr, 33 * u, 33 * u, p);
-            if (topRim) c.drawRoundRect(cr, 33 * u, 33 * u, rim);
-            pill.setTextAlign(Paint.Align.CENTER);
-            c.drawText(clock, cr.centerX(), cr.centerY() + Ui.halfCap(pill), pill);
+            String clock = Ui.clock(System.currentTimeMillis()), date = Ui.date(System.currentTimeMillis());
+            if (!date.isEmpty()) date = Character.toUpperCase(date.charAt(0)) + date.substring(1);
+            Paint big = Ui.numbers(Ui.displayMedium, 200 * u, ink), small = Ui.text(Ui.medium, 38 * u, dark ? 0xB3FFFFFF : 0xFF6E6E73);
+            big.setLetterSpacing(-0.03f);
+            float clockBase = 407 + Ui.cap(big) / u / 2;
+            c.drawText(clock, frame.left + 80 * u, frame.top + clockBase * u, big);
+            c.drawText(date, frame.left + 80 * u, frame.top + (clockBase + 84) * u, small);
             if (topBg) {
                 c.drawCircle(frame.left + 1716 * u, frame.top + 103 * u, 34 * u, p);
                 c.drawCircle(frame.left + 1806 * u, frame.top + 103 * u, 34 * u, p);
@@ -1008,39 +995,6 @@ public class SettingsActivity extends Activity {
             } else {
                 for (float rr : new float[] {7 * u, 13 * u, 19 * u}) {
                     c.drawArc(new RectF(wcx - rr, wcy - rr, wcx + rr, wcy + rr), 225, 90, false, wifi);
-                }
-            }
-            if (recsOn) {
-                Paint t = Ui.text(Ui.semibold, 70 * u, ink);
-                c.drawText(Ui.tr("Para você", "For You"), frame.left + 80 * u, frame.top + 130 * u, t);
-                Paint tab = Ui.text(Ui.semibold, 30 * u, ink);
-                c.drawText(Ui.tr("Em alta", "Trending"), frame.left + 80 * u, frame.top + 205 * u, tab);
-                tab.setColor(dark ? 0x99FFFFFF : 0x991D1D1F);
-                c.drawText(Ui.tr("Filmes", "Movies"), frame.left + 250 * u, frame.top + 205 * u, tab);
-                c.drawText(Ui.tr("Séries", "Shows"), frame.left + 390 * u, frame.top + 205 * u, tab);
-                float[][] boxes = {{80, 1120}, {1160, 1480}, {1520, 1840}};
-                Paint cap = Ui.text(Ui.semibold, 30 * u, ink);
-                for (int i = 0; i < 3; i++) {
-                    float lower = (1 - ds) * 206 / 2;     // follows the focused size while choosing
-                    RectF cb = new RectF(frame.left + boxes[i][0] * u, frame.top + (262 + lower) * u, frame.left + boxes[i][1] * u, frame.top + (704 + lower) * u);
-                    c.save();
-                    android.graphics.Path cc = new android.graphics.Path();
-                    cc.addRoundRect(cb, 18 * u, 18 * u, android.graphics.Path.Direction.CW);
-                    c.clipPath(cc);
-                    android.graphics.Bitmap img = miniCards[i];
-                    if (img != null) {
-                        float sc = Math.max(cb.width() / img.getWidth(), cb.height() / img.getHeight());
-                        float iw = img.getWidth() * sc, ih = img.getHeight() * sc;
-                        c.drawBitmap(img, null, new RectF(cb.centerX() - iw / 2, cb.centerY() - ih / 2, cb.centerX() + iw / 2, cb.centerY() + ih / 2), bp);
-                    } else {
-                        p.setColor(dark ? 0x66FFFFFF : 0x99FFFFFF);
-                        c.drawRect(cb, p);
-                    }
-                    c.restore();
-                    if (miniTitles[i] != null) {
-                        String tt = TextUtils.ellipsize(miniTitles[i], new TextPaint(cap), cb.width(), TextUtils.TruncateAt.END).toString();
-                        c.drawText(tt, cb.left, cb.bottom + 44 * u, cap);
-                    }
                 }
             }
             // The shelf, live: each app's tile (logo on its card), up to what fits.
@@ -1515,11 +1469,10 @@ public class SettingsActivity extends Activity {
             c.drawText(note, LIST_X * k + 30 * k, (listEnd(3) + 40) * k, hint);
         }
 
-        // MARK: Home screen: theme, background (recommendations, wallpaper or color), sounds, Live TV
+        // MARK: Home screen: theme, background (wallpaper or color), the dock, the top, sounds
 
         private String backgroundName() {
             Context ctx = getContext();
-            if (Prefs.recsOn(ctx)) return Ui.tr("Recomendações", "Recommendations");
             int color = Prefs.bgColor(ctx);
             return color >= 0 ? Ui.tr("Cor sólida", "Solid color") : Ui.tr("Papel de parede", "Wallpaper");
         }
@@ -1527,38 +1480,34 @@ public class SettingsActivity extends Activity {
         /** The solid color's name, or null when the background is a photo. */
         private String bgColorName() {
             Context ctx = getContext();
-            int color = Prefs.recsOn(ctx) ? -1 : Prefs.bgColor(ctx);
+            int color = Prefs.bgColor(ctx);
             String[] names = HomeView.bgColorNames();
             return color >= 0 && color < names.length ? names[color] : null;
         }
 
         private void drawHomeScreen(Canvas c) {
             Context ctx = getContext();
-            boolean recsOn = Prefs.recsOn(ctx);
             String colorName = bgColorName();
             String[] labels = {Ui.tr("Tema", "Theme"), Ui.tr("Fundo", "Background"),
-                    recsOn ? Ui.tr("Recomendações", "Recommendations") : colorName != null ? Ui.tr("Cor", "Color") : Ui.tr("Papel de parede", "Wallpaper"),
+                    colorName != null ? Ui.tr("Cor", "Color") : Ui.tr("Papel de parede", "Wallpaper"),
                     Ui.tr("Ícones da barra", "Shelf icons"), Ui.tr("Tamanho da dock", "Dock size"),
                     Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Fundo no topo", "Top background"),
                     Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Fundo da dock", "Dock background"),
-                    Ui.tr("Bordas do painel", "Panel outlines"),
-                    Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("TV ao Vivo", "Live TV")};
+                    Ui.tr("Sons ao navegar", "Navigation sounds")};
             String[] values = {themes()[HomeView.theme(ctx)], backgroundName(),
-                    recsOn ? (hasKey ? Prefs.genreNames(ctx) : Ui.tr("Sem chave do TMDB", "No TMDB key")) : colorName != null ? colorName : Wallpapers.sourceName(ctx),
-                    shelfArtNames()[Prefs.shelfArt(ctx) ? 1 : 0], dockSizeNames()[Prefs.dockSize(ctx)], "", "", "", "", "",
-                    Prefs.sounds(ctx) ? Ui.tr("Sim", "On") : Ui.tr("Não", "Off"), liveName()};
-            for (int i = 0; i < 12; i++) {
+                    colorName != null ? colorName : Wallpapers.sourceName(ctx),
+                    shelfArtNames()[Prefs.shelfArt(ctx) ? 1 : 0], dockSizeNames()[Prefs.dockSize(ctx)], "", "", "", "", ""};
+            for (int i = 0; i < 10; i++) {
                 layoutRow(i);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(fg(0xF2FFFFFF), INK, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowIcon(c, HOME_ICONS[i], HOME_COLORS[i]), base, rowLabel);
-                if (i == 10) rowToggle(c, Prefs.sounds(ctx));
+                if (i == 9) rowToggle(c, Prefs.sounds(ctx));
                 else if (i == 5) rowToggle(c, Prefs.topBorders(ctx));
                 else if (i == 6) rowToggle(c, Prefs.topBackground(ctx));
                 else if (i == 7) rowToggle(c, Prefs.dockBorders(ctx));
                 else if (i == 8) rowToggle(c, Prefs.dockBackground(ctx));
-                else if (i == 9) rowToggle(c, Prefs.panelBorders(ctx));
                 else valueAndChevron(c, values[i], base, f);
             }
         }
@@ -1860,10 +1809,9 @@ public class SettingsActivity extends Activity {
             }
             if (popup == BG_POPUP) {
                 String[] colors = HomeView.bgColorNames();
-                String[] out = new String[2 + colors.length];
-                out[0] = Ui.tr("Recomendações", "Recommendations");
-                out[1] = Ui.tr("Papel de parede", "Wallpaper");
-                for (int i = 0; i < colors.length; i++) out[2 + i] = Ui.tr("Cor sólida: ", "Solid color: ") + colors[i];
+                String[] out = new String[1 + colors.length];
+                out[0] = Ui.tr("Papel de parede", "Wallpaper");
+                for (int i = 0; i < colors.length; i++) out[1 + i] = Ui.tr("Cor sólida: ", "Solid color: ") + colors[i];
                 return out;
             }
             if (popup == WP_PICK_POPUP || popup == WP_ROTATE_POPUP) {
@@ -1904,8 +1852,7 @@ public class SettingsActivity extends Activity {
             if (popup == DOCK_POPUP) return HomeApps.shelfPackages(getContext()).contains(dockApps.get(i)[0]);
             if (popup == BG_POPUP) {
                 Context ctx = getContext();
-                if (Prefs.recsOn(ctx)) return i == 0;
-                return Prefs.bgColor(ctx) == i - 2;     // wallpaper is color -1, at i = 1
+                return Prefs.bgColor(ctx) == i - 1;     // wallpaper is color -1, at i = 0
             }
             if (popup == WP_ROTATE_POPUP) return !Prefs.wallpaperSkip(getContext()).contains(wpNames().get(i));
             return Prefs.genres(getContext()).contains(Prefs.GENRES[i][0]);
@@ -2171,9 +2118,9 @@ public class SettingsActivity extends Activity {
                             Prefs.setDockSize(c, popupFocus);
                             popup = NO_POPUP;
                         } else if (popup == BG_POPUP) {
-                            Prefs.setBackground(c, popupFocus == 0, popupFocus - 2);
+                            Prefs.setBackground(c, false, popupFocus - 1);
                             popup = NO_POPUP;
-                            if (popupFocus == 1 && Wallpapers.names(c).isEmpty()) syncWallpapers();
+                            if (popupFocus == 0 && Wallpapers.names(c).isEmpty()) syncWallpapers();
                         } else if (popup == WP_ROTATE_POPUP) {
                             Prefs.toggleWallpaperSkip(c, wpNames().get(popupFocus));     // stays open: tick several
                         } else if (popup == WP_PICK_POPUP) {
@@ -2280,9 +2227,7 @@ public class SettingsActivity extends Activity {
                 if (focus == 0) open(THEME, HomeView.theme(c));
                 else if (focus == 1) openPopup(BG_POPUP);
                 else if (focus == 2) {
-                    if (Prefs.recsOn(c)) {
-                        open(RECS, 0);
-                    } else if (bgColorName() != null) {
+                    if (bgColorName() != null) {
                         openPopup(BG_POPUP);     // "Cor": pick another one in the same list
                     } else {
                         open(WALL, 0);
@@ -2291,17 +2236,12 @@ public class SettingsActivity extends Activity {
                     }
                 } else if (focus == 3) openPopup(ART_POPUP);
                 else if (focus == 4) openPopup(SIZE_POPUP);
-                else if (focus == 10) openYesNo("sounds", Ui.tr("Sons ao navegar", "Navigation sounds"));
+                else if (focus == 9) openYesNo("sounds", Ui.tr("Sons ao navegar", "Navigation sounds"));
                 // Toggles: flip in place.
                 else if (focus == 5) Prefs.set(c, "border_top", !Prefs.topBorders(c));
                 else if (focus == 6) Prefs.set(c, "bg_top", !Prefs.topBackground(c));
                 else if (focus == 7) Prefs.set(c, "border_dock", !Prefs.dockBorders(c));
                 else if (focus == 8) Prefs.set(c, "dock_bg", !Prefs.dockBackground(c));
-                else if (focus == 9) Prefs.set(c, "border_panel", !Prefs.panelBorders(c));
-                else {
-                    liveChoices = liveChoices();
-                    openPopup(LIVE_POPUP);
-                }
             } else if (focus == 0) {
                 if (busy()) return;
                 open(HOME_CHOICE, freeActive() ? 0 : 1);
