@@ -1330,9 +1330,25 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             clip.addRoundRect(cell, r, r, Path.Direction.CW);
             c.save();
             c.clipPath(clip);
-            if (it.tile != null) c.drawBitmap(it.tile, null, cell, bitmapPaint);
+            if (it.tile != null) drawCover(c, it.tile, cell);
             c.restore();
         }
+    }
+
+    // The TV art is 16:9 and the dock tiles are wider: crop it to the tile (centered) instead of stretching it.
+    private final Rect coverSrc = new Rect();
+
+    private void drawCover(Canvas c, Bitmap b, RectF dst) {
+        int bw = b.getWidth(), bh = b.getHeight();
+        float aspect = dst.width() / dst.height();
+        if (bw > bh * aspect) {
+            int cw = Math.round(bh * aspect);
+            coverSrc.set((bw - cw) / 2, 0, (bw + cw) / 2, bh);
+        } else {
+            int ch = Math.round(bw / aspect);
+            coverSrc.set(0, (bh - ch) / 2, bw, (bh + ch) / 2);
+        }
+        c.drawBitmap(b, coverSrc, dst, bitmapPaint);
     }
 
     // One gradient per tile style, placed on the tile by its matrix: no new shader per tile on every frame.
