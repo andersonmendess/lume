@@ -503,10 +503,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         layoutStatus();
         heroDirty = statusDirty = drawerDirty = true;
         platter.invalidate();
+        wake();
     }
 
     @Override public void onRecs() {
         updatePicks();
+        wake();
         handler.postDelayed(this::warmTabs, 1500);     // after this tab's own cards
     }
 
@@ -624,7 +626,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     @Override public void doFrame(long frameTimeNanos) {
         if (!running) return;
-        float dt = lastNanos == 0 ? 1 / 60f : Math.min(0.05f, (frameTimeNanos - lastNanos) / 1e9f);
+        // After an idle gap, one normal step: springs retargeted by a key shouldn't jump.
+        float dt = lastNanos == 0 || idleFrame ? 1 / 60f : Math.min(0.05f, (frameTimeNanos - lastNanos) / 1e9f);
         lastNanos = frameTimeNanos;
         long up = SystemClock.uptimeMillis();
 
@@ -678,7 +681,21 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
                 || sheetMoving || toastFading || heroFading || bgFading || nightMoving || sheetOpen || sheet.value > 0.001f
-                || drawerOpen || drawer.value > 0.001f;
+                || drawerOpen || drawer.value > 0.001f || fading || drawerWasMoving || sheetWasMoving;
+        // Still: a few checks a second (clock, late data) instead of waking the UI thread on every vsync, which cost
+        // ~15% CPU on the Mi TV Stick. wake() brings back full rate at once (keys, fades, new data).
+        idleFrame = !busy;
+        if (busy) Choreographer.getInstance().postFrameCallback(this);
+        else Choreographer.getInstance().postFrameCallbackDelayed(this, IDLE_FRAME_MS);
+    }
+
+    private static final long IDLE_FRAME_MS = 250;
+    private boolean idleFrame;
+
+    /** Back to 60 fps right away (from the idle rate). */
+    private void wake() {
+        if (!running) return;
+        Choreographer.getInstance().removeFrameCallback(this);
         Choreographer.getInstance().postFrameCallback(this);
     }
 
@@ -877,6 +894,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (bgFadeAt == 0 || fadeEase(bgFadeAt, up) >= 0.5f) bgFrom = bgTo;
         bgTo = b;
         bgFadeAt = up;
+        wake();
         nightPair = false;
         if (b == null || glassOf(b) == null) return;
         if (bgFrom == null || glassOf(bgFrom) == null) {
@@ -1874,6 +1892,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     void showToast(String text) {
         toasts.add(text);
+        wake();
     }
 
     /** Advances the toast queue; returns true while a toast fades in or out (animation). */
@@ -1972,6 +1991,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - Keys: only the arrows, OK and Back (system keys pass through to the system)
 
     boolean onKey(KeyEvent e) {
+        wake();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -2375,6 +2395,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 rotation++;
                 turn = (turn + 1) % 3;
                 updateCards();
+                wake();
             }
             handler.postDelayed(this, ROTATE_MS);
         }
