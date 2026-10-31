@@ -48,13 +48,13 @@ import java.util.concurrent.Executors;
  *    the first card's photo, heavily blurred and almost white (Backdrop); without one, a light gradient;
  *  - at the bottom, the glass shelf with the apps (icons in each brand's color, like the tvOS Dock; the focused one
  *    grows);
- *  - ↓ on the shelf: everything moves up and the bottom drawer appears (inputs, shortcuts, weather for the next
- *    hours); the background lightens (darkens at night). ↑ or Back closes it;
- *  - from sunset to sunrise, a night look: dark background, smoked glass and white text.
+ *  - ↓ on the shelf: everything moves up and the bottom drawer appears (inputs and shortcuts); the background
+ *    lightens (darkens at night). ↑ or Back closes it;
+ *  - from 18:00 to 6:00, a night look: dark background, smoked glass and white text.
  * Measurements are in a 1920×1080 space (k = width / 1920). The screen is split into layers so the TV's weak GPU only
  * redraws what changed.
  */
-final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
+final class HomeView extends ViewGroup implements Choreographer.FrameCallback, Recs.Listener {
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
@@ -94,7 +94,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private final Activity activity;
     private final Scene scene = new Scene();
-    private final HomeData data;
     private final Recs recs;
     private final Click click;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -103,7 +102,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Layer sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer;
     private int zone = Z_SHELF;
 
-    // Night look (like Apple's "Automatic" appearance): darker from sunset to sunrise, with a 2 s transition.
+    // Night look (like Apple's "Automatic" appearance): darker from 18:00 to 6:00, with a 2 s transition.
     private static final long NIGHT_MS = 2000;
     private boolean nightTarget;
     private float night, nightFrom;     // 0 = day, 1 = night
@@ -121,7 +120,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring[] cardFocus = new Spring[3];
     private final RectF[] cardRects = new RectF[3];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
-    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lTip, lWx;
+    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lTip;
     private Shader lightGradient;
 
     // Shelf
@@ -168,7 +167,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // Bottom drawer
     private List<HomeApps.Item> drawerItems = new ArrayList<>();
     private int drawerTop;             // how many leading items are shortcuts (the rest are inputs)
-    private final RectF menuPanel = new RectF(), panelWx = new RectF();
+    private final RectF menuPanel = new RectF();
     private float drawerShift;         // how far the home screen rises while the panel is open
     private Spring[] drawerFocus = new Spring[0];
     private RectF[] drawerRects = new RectF[0];
@@ -219,7 +218,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Path clip = new Path();
     private final RectF tmp = new RectF(), cell = new RectF(), screen = new RectF();
 
-    /** What the hero shows: a recommendation or, without any, the date, the time and the weather. */
+    /** What the hero shows: a recommendation or, without any, the date and the time. */
     private static final class Hero {
         String label = "", title = "", meta = "";
         boolean clock, button;
@@ -270,7 +269,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!running) return;
-            data.refreshIfStale();
             recs.refreshIfStale();
             checkNotices();
             updatePalette();
@@ -284,7 +282,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     HomeView(Activity a) {
         super(a);
         activity = a;
-        data = HomeData.get(a);
         recs = Recs.get(a);
         click = new Click(a);
         ui = a.getSharedPreferences("home-ui", Context.MODE_PRIVATE);
@@ -331,9 +328,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         resumedAt = SystemClock.uptimeMillis();
         lastNanos = 0;
         lastStep = 0;
-        data.addListener(this);
         recs.addListener(this);
-        data.refreshIfStale();
         recs.refreshIfStale();
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         handler.postDelayed(tick, 15_000);
@@ -362,7 +357,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         Choreographer.getInstance().removeFrameCallback(this);
         handler.removeCallbacks(tick);
         handler.removeCallbacks(rotate);
-        data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
     }
@@ -407,7 +401,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final int NET_NONE = 0, NET_WIFI = 1, NET_CABLE = 2;
     private int net = -1;
     private Paint lPill, netStroke;
-    private final RectF pillRect = new RectF(), arcRect = new RectF(), weatherRect = new RectF();
+    private final RectF pillRect = new RectF(), arcRect = new RectF();
     private final android.graphics.Path netPath = new android.graphics.Path();
 
     /** Wi‑Fi, cable or no internet, from the active network (checked on resume and every 15 s). */
@@ -478,10 +472,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** The time in a glass pill like the buttons, left of them (not focusable). */
     private void drawClockPill(Canvas c) {
-        if (clockText.isEmpty() || lPill == null || wxShown) return;     // with the weather, the time sits in its pill
+        if (clockText.isEmpty() || lPill == null) return;
         RectF first = topRects[3];
         float h = first.height(), w = lPill.measureText(clockText) + 2 * 30 * k;
-        float right = (wxRight && wxShown ? weatherRect.left : first.left) - L_BUTTON_GAP * k;
+        float right = first.left - L_BUTTON_GAP * k;
         RectF r = pillRect;
         r.set(right - w, first.top, right, first.bottom);
         tmp.set(r);
@@ -494,15 +488,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private static String[] tabs() {
         return Ui.en ? TABS_EN : TABS;
-    }
-
-    @Override public void onData() {
-        updatePalette();
-        checkNight(true);
-        layoutStatus();
-        heroDirty = statusDirty = drawerDirty = true;
-        platter.invalidate();
-        wake();
     }
 
     @Override public void onRecs() {
@@ -527,7 +512,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // cheaper for the GPU to composite on every frame of the drawer animation.
         measure(platter, width, Math.round(320 * kk));
         measure(tiles, width, Math.round(270 * kk));
-        measure(drawerLayer, width, height);     // full screen: it holds the popups (weather, gear, hold menu)
+        measure(drawerLayer, width, height);     // full screen: it holds the popups (gear, hold menu)
         measure(sheetLayer, width, height);
         measure(toastLayer, Math.round(1000 * kk), Math.round(220 * kk));
         setMeasuredDimension(width, height);
@@ -595,7 +580,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lCardTitle.setLetterSpacing(0.012f);
         lCardMeta = Ui.text(Ui.medium, 25 * k, L_DIM);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
-        lWx = Ui.text(Ui.semibold, 28 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
         lPill = Ui.numbers(Ui.semibold, 34 * k, L_INK);
         lPill.setTextAlign(Paint.Align.CENTER);
@@ -800,8 +784,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void updatePalette() {
-        HomeData.Weather wx = data.weather;
-        Shaders.sky(scene.palette, System.currentTimeMillis(), wx.sunrise, wx.sunset);
+        Shaders.sky(scene.palette, System.currentTimeMillis());
         scene.applyPalette();
     }
 
@@ -931,8 +914,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     // MARK: - Night look
 
-    /** Day or night right now (from the sun at your location); `animate`: with the transition. */
-    /** Look: automatic (light by day, dark from sunset), always light or always dark (Home Settings → Theme). */
+    /** Look: automatic (light by day, dark from 18:00 to 6:00), always light or always dark (Home Settings → Theme). */
     static final int THEME_AUTO = 0, THEME_LIGHT = 1, THEME_DARK = 2;
 
     static int theme(Context c) {
@@ -943,9 +925,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.getSharedPreferences("home-ui", Context.MODE_PRIVATE).edit().putInt("theme", theme).apply();
     }
 
+    /** Day or night right now; `animate`: with the transition. */
     private void checkNight(boolean animate) {
         int theme = theme(getContext());
-        boolean want = theme == THEME_AUTO ? data.isNight(System.currentTimeMillis()) : theme == THEME_DARK;
+        boolean want = theme == THEME_AUTO ? Ui.isNight(System.currentTimeMillis()) : theme == THEME_DARK;
         if (want == nightTarget) return;
         nightTarget = want;
         if (animate && running) {
@@ -1096,7 +1079,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.drawText(s, x, y, p);
     }
 
-    // MARK: - Corner capsule: time and weather (when the hero shows a recommendation) and icon-only buttons
+    // MARK: - Corner capsule: time (when the hero shows a recommendation) and icon-only buttons
 
     /** Live TV, the inputs with a device on, All Apps and Settings. */
     private static List<HomeApps.Item> statusList(Context c) {
@@ -1138,13 +1121,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float b = BUTTON * k, gap = 4 * k, pad = 6 * k;
         float info = 0;
         if (showInfo()) {
-            info = 26 * k + capsuleText.measureText(clockText);
-            HomeData.Weather wx = data.weather;
-            if (!Double.isNaN(wx.temp) && Prefs.showWeather(getContext())) {
-                info += 22 * k + Symbols.width(getContext(), Symbols.weather(wx.code, wx.isDay), 24 * k) + 8 * k
-                        + capsuleText.measureText(HomeData.degrees(wx.temp));
-            }
-            info += 22 * k;
+            info = 26 * k + capsuleText.measureText(clockText) + 22 * k;
         }
         capsuleInfoW = info;
         float buttons = n * b + Math.max(0, n - 1) * gap;
@@ -1463,12 +1440,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float pw = 1180 * k, padX = 46 * k, padTop = 34 * k, head = 62 * k, cardH = 150 * k, gap = 22 * k;
         float between = 30 * k, padBottom = 46 * k;
         float ph = padTop + head + cardH + (inputs > 0 ? between + head + cardH : 0) + padBottom;
-        // The weather card goes under the panel; the two together sit in the middle of the screen.
-        boolean wx = Prefs.showWeather(getContext()) && !Double.isNaN(data.weather.temp);
-        float wxGap = 18 * k, wxH = 300 * k, group = ph + (wx ? wxGap + wxH : 0);
-        float left = (w - pw) / 2, ptop = (h - group) / 2, inner = pw - 2 * padX;
-        if (wx) panelWx.set(left, ptop + ph + wxGap, left + pw, ptop + ph + wxGap + wxH);
-        else panelWx.setEmpty();
+        float left = (w - pw) / 2, ptop = (h - ph) / 2, inner = pw - 2 * padX;
         menuPanel.set(left, ptop, left + pw, ptop + ph);
         float y = ptop + padTop + head, sw = (inner - Math.max(0, top - 1) * gap) / Math.max(1, top);
         for (int i = 0; i < top; i++) {
@@ -1492,7 +1464,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawer.target = 1;
         zone = Z_DRAWER;
         drawerIndex = 0;     // Ajustes do Lume
-        layoutDrawer();     // the weather card may have arrived since
+        layoutDrawer();
         motionDirty = true;     // the caller plays the sound (one click, not two)
         for (int i = 0; i < drawerFocus.length; i++) drawerFocus[i].snap(i == drawerIndex ? 1 : 0);
         drawerDirty = true;
@@ -1503,11 +1475,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawer.target = 0;
         zone = Z_SHELF;
         for (Spring f : drawerFocus) f.snap(0);   // the panel goes away: its focus doesn't need to animate
-    }
-
-    /** Clouds in the colored weather icons: white at night, soft gray by day (as in the mockups). */
-    private int cloudColor() {
-        return blend(0xFF2C2F36, 0xFFF2F2F5, dark());
     }
 
     private final Paint flatLine = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1554,7 +1521,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /**
-     * The panel's cards (shortcuts and inputs, weather): a solid, slightly see-through card with a soft shadow, no
+     * The panel's cards (shortcuts and inputs): a solid, slightly see-through card with a soft shadow, no
      * border line.
      */
     private void panelCard(Canvas c, RectF r) {
@@ -1575,7 +1542,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (drawerItems.isEmpty()) return;
         rowTitle.setColor(tone(L_DIM, 0xB3FFFFFF));
         panelCard(c, menuPanel);
-        if (!panelWx.isEmpty()) drawPanelWeather(c, panelWx);
         if (drawerTop > 0) c.drawText(Ui.tr("ATALHOS", "SHORTCUTS"), drawerRects[0].left + 6 * k, drawerRects[0].top - 22 * k, rowTitle);
         if (drawerTop < drawerItems.size()) c.drawText(Ui.tr("ENTRADAS", "INPUTS"), drawerRects[drawerTop].left + 6 * k, drawerRects[drawerTop].top - 22 * k, rowTitle);
         int top = -1;     // the focused block is drawn last (its shadow over its neighbors)
@@ -1586,83 +1552,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
 
     private Paint panelLabel, panelSub;
-    private Paint pwCity, pwTemp, pwText, pwDim, pwHour, pwHourTemp, pwDay, pwMax;
-
-    /**
-     * The weather card under the panel: city, temperature and today's high/low; the next 4 hours; the next 3 days.
-     */
-    private void drawPanelWeather(Canvas c, RectF r) {
-        HomeData.Weather wx = data.weather;
-        if (pwCity == null) {
-            pwCity = Ui.text(Ui.medium, 40 * k, 0xFFFFFFFF);
-            pwTemp = Ui.numbers(Ui.displaySemibold, 112 * k, 0xFFFFFFFF);
-            pwText = Ui.text(Ui.medium, 26 * k, 0xFFFFFFFF);
-            pwDim = Ui.text(Ui.medium, 24 * k, 0xFFFFFFFF);
-            pwHour = Ui.text(Ui.medium, 23 * k, 0xFFFFFFFF);
-            pwHour.setTextAlign(Paint.Align.CENTER);
-            pwHourTemp = Ui.numbers(Ui.semibold, 34 * k, 0xFFFFFFFF);
-            pwHourTemp.setTextAlign(Paint.Align.CENTER);
-            pwDay = Ui.text(Ui.medium, 25 * k, 0xFFFFFFFF);
-            pwMax = Ui.numbers(Ui.semibold, 26 * k, 0xFFFFFFFF);
-            pwMax.setTextAlign(Paint.Align.RIGHT);
-        }
-        int ink = drawerInk(1), dim = tone(L_DIM, 0xA6FFFFFF), line = tone(0x1A000000, 0x1FFFFFFF), cloud = cloudColor();
-        for (Paint p : new Paint[] {pwCity, pwTemp, pwText, pwHourTemp, pwDay, pwMax}) p.setColor(ink);
-        pwDim.setColor(dim);
-        pwHour.setColor(tone(L_INK, 0xD9FFFFFF));
-        panelCard(c, r);
-        fill.setShader(null);
-        // Now: city, temperature with the big colored icon, sky, high and low.
-        float x = r.left + 50 * k;
-        c.drawText(data.city.isEmpty() ? Ui.tr("Clima", "Weather") : data.city, x, r.top + 74 * k, pwCity);
-        String t = HomeData.degrees(wx.temp);
-        c.drawText(t, x - Ui.leftBearing(pwTemp, t), r.top + 184 * k, pwTemp);
-        Icons.weather(c, wx.code, wx.isDay, x + pwTemp.measureText(t) + 70 * k, r.top + 140 * k, 100 * k, cloud);
-        c.drawText(HomeData.condition(wx.code, wx.isDay), x, r.top + 230 * k, pwText);
-        c.drawText(Ui.en ? "H: " + HomeData.degrees(wx.max) + "   L: " + HomeData.degrees(wx.min)
-                : "Máx. " + HomeData.degrees(wx.max) + "   Mín. " + HomeData.degrees(wx.min), x, r.top + 266 * k, pwDim);
-        boolean days = !wx.dayName.isEmpty();
-        float d1 = r.left + 400 * k, d2 = days ? r.left + 800 * k : r.right;
-        fill.setColor(line);
-        c.drawRect(d1, r.top + 40 * k, d1 + 1.5f * k, r.bottom - 40 * k, fill);
-        if (days) c.drawRect(d2, r.top + 40 * k, d2 + 1.5f * k, r.bottom - 40 * k, fill);
-        // Next hours: now and the next three, with thin lines between them.
-        rowTitle.setColor(tone(L_DIM, 0xB3FFFFFF));
-        c.drawText(Ui.tr("PRÓXIMAS HORAS", "NEXT HOURS"), d1 + 40 * k, r.top + 70 * k, rowTitle);
-        float cw = (d2 - d1 - 50 * k) / 4;
-        for (int i = 0; i < 4 && i <= wx.hours.size(); i++) {
-            float hc = d1 + 25 * k + cw * (i + 0.5f);
-            int j = i - 1;
-            if (i > 0) {
-                fill.setColor(line);
-                c.drawRect(d1 + 25 * k + cw * i, r.top + 104 * k, d1 + 25 * k + cw * i + 1.5f * k, r.bottom - 44 * k, fill);
-            }
-            c.drawText(i == 0 ? Ui.tr("Agora", "Now") : HomeData.hour(wx.hours.get(j)), hc, r.top + 122 * k, pwHour);
-            double temp = i == 0 ? wx.temp : wx.hourTemp.get(j);
-            int code = i == 0 ? wx.code : wx.hourCode.get(j);
-            boolean day = i == 0 ? wx.isDay : wx.hourDay.get(j);
-            Icons.weather(c, code, day, hc, r.top + 176 * k, 50 * k, cloud);
-            c.drawText(HomeData.degrees(temp), hc, r.top + 248 * k, pwHourTemp);
-        }
-        if (!days) return;
-        // Next days: one row each (low and high), with lines between the rows.
-        c.drawText(Ui.tr("PRÓXIMOS DIAS", "NEXT DAYS"), d2 + 40 * k, r.top + 70 * k, rowTitle);
-        float rowH = 60 * k, y = r.top + 128 * k;
-        for (int i = 0; i < wx.dayName.size(); i++) {
-            float base = y + i * rowH;
-            if (i > 0) {
-                fill.setColor(line);
-                c.drawRect(d2 + 40 * k, base - rowH / 2 - 10 * k, r.right - 40 * k, base - rowH / 2 - 10 * k + 1.5f * k, fill);
-            }
-            c.drawText(wx.dayName.get(i), d2 + 40 * k, base, pwDay);
-            Icons.weather(c, wx.dayCode.get(i), true, d2 + 160 * k, base - Ui.halfCap(pwDay), 38 * k, cloud);
-            pwMax.setColor(Ui.alpha(ink, 0.8f));
-            c.drawText(HomeData.degrees(wx.dayMin.get(i)), r.right - 124 * k, base, pwMax);
-            pwMax.setColor(ink);
-            c.drawText(HomeData.degrees(wx.dayMax.get(i)), r.right - 40 * k, base, pwMax);
-        }
-    }
-
     /** A panel block: symbol, name and (inputs) whether a device is on. Focused: white, with dark text. */
     private void drawDrawerTile(Canvas c, int i) {
         HomeApps.Item it = drawerItems.get(i);
@@ -2471,11 +2360,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         for (Recs.Pick p : list) recs.backdrop(p);
         Backdrop b = cards.isEmpty() ? null : recs.backdrop(cards.get(0));
-        boolean right = Prefs.weatherRight(getContext());
-        if (right != wxRight) {
-            wxRight = right;
-            status.invalidate();
-        }
         boolean off = !Prefs.recsOn(getContext());
         if (off != recsOff) {
             recsOff = off;
@@ -2500,7 +2384,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private LinearGradient wallScrim;
     private float wallScrimNight = -1;
     private boolean recsOff;            // recommendations turned off: no tabs or cards, just the wallpaper
-    private boolean wxRight, wxShown;   // the weather pill next to the clock (Home Settings), and whether it's drawn
     private String wallName;            // the wallpaper shown (or being loaded)
     private Backdrop wallBackdrop;
     private boolean wallLoading;
@@ -2626,45 +2509,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (night > 0.001f) drawImage(c, b.nightImage, alpha * night);
     }
 
-    /**
-     * Top center: the weather now in one line (icon, temperature and sky), in a glass pill like the clock and the
-     * buttons on the right.
-     */
-    private void drawWeatherPill(Canvas c) {
-        HomeData.Weather wx = data.weather;
-        wxShown = !Double.isNaN(wx.temp) && lWx != null && Prefs.showWeather(getContext());
-        if (!wxShown) return;
-        lWx.setColor(tone(L_INK, 0xEBFFFFFF));
-        // One pill: the weather symbol, the temperature, a thin line and the time.
-        String now = HomeData.degrees(wx.temp);
-        String symbol = Symbols.weather(wx.code, wx.isDay);
-        float size = 36 * k, sw = Symbols.width(getContext(), symbol, size);
-        float gapLine = 22 * k, clockW = lWx.measureText(clockText);
-        float width = sw + 14 * k + lWx.measureText(now) + (clockText.isEmpty() ? 0 : 2 * gapLine + clockW);
-        float bh = L_BUTTON * k, cy = L_BUTTON_CY * k;
-        // In the middle, or on the right: after the clock, before the network button.
-        float mid = wxRight ? topRects[3].left - L_BUTTON_GAP * k - width / 2 - 30 * k : 960 * k;
-        RectF r = weatherRect;
-        r.set(mid - width / 2 - 30 * k, cy - bh / 2, mid + width / 2 + 30 * k, cy + bh / 2);
-        tmp.set(r);
-        tmp.offset(0, 6 * k);
-        topShadow(c, tmp, bh / 2, Ui.alpha(0xFF000000, tone(0.1f, 0.3f)));
-        liquidGlass(c, r, bh / 2, 1);
-        float x = mid - width / 2, base = cy + Ui.halfCap(lWx);
-        Icons.weather(c, wx.code, wx.isDay, x + sw / 2, cy, size, cloudColor());
-        c.drawText(now, x + sw + 14 * k, base, lWx);
-        if (!clockText.isEmpty()) {
-            float lx = x + sw + 14 * k + lWx.measureText(now) + gapLine;
-            fill.setShader(null);
-            fill.setColor(Ui.alpha(lWx.getColor(), 0.3f));
-            c.drawRect(lx, cy - 15 * k, lx + 1.5f * k, cy + 15 * k, fill);
-            c.drawText(clockText, lx + gapLine, base, lWx);
-        }
-    }
-
     private void drawLightTop(Canvas c) {
         applyTone();
-        if (recsOff) return;     // without recommendations, no title: just the wallpaper, the weather and the buttons
+        if (recsOff) return;     // without recommendations, no title: just the wallpaper and the buttons
         String hello = Ui.tr("Para você", "For You");
         c.drawText(hello, MARGIN * k - Ui.leftBearing(lTitle, hello), L_TITLE_BASE * k, lTitle);
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
@@ -2809,7 +2656,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      */
     private void drawLightButtons(Canvas c) {
         applyTone();
-        drawWeatherPill(c);
         drawClockPill(c);
         for (int i = 0; i < lightButtons.size(); i++) {
             RectF r = topRects[3 + i];
@@ -2865,7 +2711,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 break;
             case Z_TOP:
                 if (dx != 0) {
-                    // Left to right: the tabs, the weather pill (when shown), the round buttons.
+                    // Left to right: the tabs, the round buttons.
                     List<Integer> order = new ArrayList<>();
                     if (!recsOff) for (int i = 0; i < 3; i++) order.add(i);
                     for (int i = 0; i < lightButtons.size(); i++) order.add(3 + i);

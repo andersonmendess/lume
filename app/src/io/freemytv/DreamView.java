@@ -33,13 +33,13 @@ import java.util.concurrent.Executors;
  *  - the recommendations' photos in full screen, one every 30 s, with a slow zoom and pan (the "Ken Burns" effect of
  *    the Apple TV photos) and a crossfade between them; each photo is loaded 10% larger than the screen, so the zoom
  *    never upscales it;
- *  - top right, like the iPhone lock screen: the date with the weather, the big Liquid Glass clock (the photo shows
+ *  - top right, like the iPhone lock screen: the date, the big Liquid Glass clock (the photo shows
  *    through the digits, bent at the edges; Shaders.GLASS_TEXT);
  *  - bottom left, the photo's caption: the time-of-day label ("TONIGHT"), the title, and genre · runtime · service.
  * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV).
  * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
-final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
+final class DreamView extends View implements Choreographer.FrameCallback, Recs.Listener {
     private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
     private static final float ZOOM = 0.1f;
     /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
@@ -94,12 +94,11 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     }
 
     private final Scene scene = new Scene();
-    private final HomeData data;
     private final Recs recs;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Node content = new Node("clock");     // without photos: the clock over the aurora
-    private final Node chrome = new Node("corner");     // date, weather and the clock's shadow
+    private final Node chrome = new Node("corner");     // date and the clock's shadow
     private final float timeOffset = (float) (Math.random() * 300);
     private final Matrix matrix = new Matrix();
     private final float[] placeA = new float[3], placeB = new float[3];
@@ -121,14 +120,13 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private float k = 1;
     private long minute = -1;
     private String clock = "", date = "";
-    private Paint datePaint, clockPaint, weatherPaint, weatherDim;
+    private Paint datePaint, clockPaint;
     private Paint cornerDate, cornerClock, labelPaint, metaPaint;
     private TextPaint titlePaint;
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!running) return;
-            data.refreshIfStale();
             recs.refreshIfStale();
             recs.prefetchAll();
             dirty = true;
@@ -140,7 +138,6 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     DreamView(Context c) {
         super(c);
-        data = HomeData.get(c);
         recs = Recs.get(c);
         Shaders.dream(scene.palette);
         scene.setMotion(0.4f, 0.32f);
@@ -165,9 +162,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         lastFrame = 0;
         failed.clear();
         fallback = recs.showcase().isEmpty();
-        data.addListener(this);
         recs.addListener(this);
-        data.refreshIfStale();
         recs.refreshIfStale();
         recs.prefetchAll();
         prepareNext();
@@ -183,7 +178,6 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         decoding = false;
         Choreographer.getInstance().removeFrameCallback(this);
         handler.removeCallbacks(tick);
-        data.removeListener(this);
         recs.removeListener(this);
         // The photos stay in GPU memory until the garbage collector runs: release them now (after the last frame).
         final java.util.Set<Bitmap> gone = new java.util.HashSet<>();
@@ -204,12 +198,6 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         worker.shutdownNow();
     }
 
-    @Override public void onData() {
-        dirty = true;
-        chromeDirty = true;
-        invalidate();
-    }
-
     @Override public void onRecs() {
         if (running) prepareNext();
     }
@@ -227,8 +215,6 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         clockPaint = Ui.numbers(Ui.thin, 280 * k, 0xF2FFFFFF);
         clockPaint.setTextAlign(Paint.Align.CENTER);
         clockPaint.setLetterSpacing(-0.01f);
-        weatherPaint = Ui.numbers(Ui.medium, 30 * k, 0xC7FFFFFF);
-        weatherDim = Ui.numbers(Ui.regular, 28 * k, 0x80FFFFFF);
         // With photos: the corner (date and clock) and the caption.
         cornerDate = Ui.numbers(Ui.semibold, 30 * k, 0xEBFFFFFF);
         cornerClock = Ui.numbers(Ui.displaySemibold, CLOCK_SIZE * k, 0xF2FFFFFF);
@@ -522,25 +508,13 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         return Math.max(base - 0.1f, Math.min(0.78f, base + (light - 0.3f) * 0.9f));
     }
 
-    // MARK: - Corner: date and weather, glass clock
+    // MARK: - Corner: date, glass clock
 
     private void recordChrome() {
         Canvas c = chrome.beginRecording(w, h);
         try {
             float right = RIGHT * k;
-            float x = right;
-            HomeData.Weather wx = data.weather;
-            if (!Double.isNaN(wx.temp) && Prefs.showWeather(getContext())) {
-                String temp = HomeData.degrees(wx.temp);
-                float tw = cornerDate.measureText(temp);
-                c.drawText(temp, x - tw, DATE_BASE * k, cornerDate);
-                x -= tw + 10 * k;
-                String symbol = Symbols.weather(wx.code, wx.isDay);
-                float size = 30 * k, sw = Symbols.width(getContext(), symbol, size);
-                Symbols.draw(getContext(), c, symbol, x - sw / 2, DATE_BASE * k - Ui.halfCap(cornerDate), size, 0xEBFFFFFF);
-                x -= sw + 26 * k;
-            }
-            c.drawText(date, x - cornerDate.measureText(date), DATE_BASE * k, cornerDate);
+            c.drawText(date, right - cornerDate.measureText(date), DATE_BASE * k, cornerDate);
 
             Glass g = glass;
             if (g != null && glassShader != null) {
@@ -753,23 +727,5 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         float clockBase = h * 0.5f + clockCap / 2 - 10 * k;
         c.drawText(date, cx, clockBase - clockCap - 34 * k, datePaint);
         c.drawText(clock, cx, clockBase, clockPaint);
-
-        // Weather: symbol, temperature, high and low, centered under the clock.
-        HomeData.Weather wx = data.weather;
-        if (!Double.isNaN(wx.temp) && Prefs.showWeather(getContext())) {
-            float base = clockBase + 76 * k;
-            String symbol = Symbols.weather(wx.code, wx.isDay);
-            String now = HomeData.degrees(wx.temp);
-            String range = Ui.en ? "H:" + HomeData.degrees(wx.max) + "  L:" + HomeData.degrees(wx.min)
-                    : "Máx. " + HomeData.degrees(wx.max) + "  Mín. " + HomeData.degrees(wx.min);
-            float sw = Symbols.width(getContext(), symbol, 32 * k);
-            float width = sw + 12 * k + weatherPaint.measureText(now) + 18 * k + weatherDim.measureText(range);
-            float x = cx - width / 2;
-            Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(weatherPaint), 32 * k, 0xC7FFFFFF);
-            x += sw + 12 * k;
-            c.drawText(now, x, base, weatherPaint);
-            x += weatherPaint.measureText(now) + 18 * k;
-            c.drawText(range, x, base, weatherDim);
-        }
     }
 }

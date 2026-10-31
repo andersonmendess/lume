@@ -130,10 +130,12 @@ final class Ui {
                 : new SimpleDateFormat("HH:mm", PT).format(new Date(now));
     }
 
-    /** "5:21" (sunrise and sunset; in English, "5:21 AM"). */
-    static String time(long at) {
-        return en ? new SimpleDateFormat("h:mm a", Locale.US).format(new Date(at))
-                : new SimpleDateFormat("H:mm", PT).format(new Date(at));
+    /** The automatic theme's night: from 18:00 to 6:00, local time. */
+    static boolean isNight(long now) {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.setTimeInMillis(now);
+        int hour = c.get(java.util.Calendar.HOUR_OF_DAY);
+        return hour < 6 || hour >= 18;
     }
 
     /** "domingo, 18 de outubro" (lowercase, like the iPhone in Portuguese); "Sunday, October 18" in English. */

@@ -122,32 +122,6 @@ public class SettingsActivity extends Activity {
                 text -> view.setWallpaperSource("wallhaven:" + text));
     }
 
-    /** Weather → City: typed with the TV's keyboard and looked up (Open-Meteo) before it's kept. */
-    void askCity() {
-        askText(Ui.tr("Cidade da previsão", "Weather city"),
-                Ui.tr("Digite o nome da cidade, por exemplo: Quissamã, RJ.", "Type the city's name, e.g. Lisbon."),
-                Ui.tr("Nome da cidade", "City name"), Prefs.weatherCityName(this), false, this::saveCity);
-    }
-
-    private void saveCity(final String name) {
-        if (name.isEmpty()) return;
-        final android.content.Context app = getApplicationContext();
-        new Thread(() -> {
-            String[] found = HomeData.findCity(name.replace(",", " "));
-            if (found != null) {
-                Prefs.setWeatherCity(app, found[0], found[1], found[2]);
-                HomeData.get(app).relocate();
-            }
-            new Handler(Looper.getMainLooper()).post(() -> {
-                android.widget.Toast.makeText(app, found != null
-                        ? Ui.tr("Previsão de ", "Weather for ") + found[3] + "."
-                        : Ui.tr("Não achei essa cidade. Confira o nome e tente de novo.", "Couldn't find that city. Check the name and try again."),
-                        android.widget.Toast.LENGTH_LONG).show();
-                view.invalidate();
-            });
-        }).start();
-    }
-
     /** A text field in our own panel (the same look as the popups), with the TV's keyboard. */
     private void askText(String titleText, String messageText, String hint, String initial, boolean secret, TextDone done) {
         final boolean light = view.isLight();
@@ -234,12 +208,12 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
-        private static final int MAIN = 0, HOME_CHOICE = 1, RECS = 2, THEME = 3, SAVER = 4, WEATHER = 5, UPDATE = 6, WALL = 7, HOMESCR = 8, MAIN_ROWS = 4;
+        private static final int MAIN = 0, HOME_CHOICE = 1, RECS = 2, THEME = 3, SAVER = 4, UPDATE = 6, WALL = 7, HOMESCR = 8, MAIN_ROWS = 4;
         /** How long the TV waits before the screensaver (Android's screen-off timeout), in minutes. */
         private static final int[] SAVER_MINUTES = {1, 2, 5, 10, 15, 30, 60};
         /** The popup over the list: none, the theme, the genres (several at once) or what OK on a card opens. */
         private static final int NO_POPUP = 0, THEME_POPUP = 1, GENRE_POPUP = 2, ACTION_POPUP = 3, LIVE_POPUP = 4, SAVER_POPUP = 5,
-                YES_NO_POPUP = 6, PLACE_POPUP = 7, WP_MODE_POPUP = 8, WP_PICK_POPUP = 9, WP_SOURCE_POPUP = 10, WP_ROTATE_POPUP = 11, BG_POPUP = 12, WX_POS_POPUP = 13, DOCK_POPUP = 14, ART_POPUP = 15, SIZE_POPUP = 16;
+                YES_NO_POPUP = 6, WP_MODE_POPUP = 8, WP_PICK_POPUP = 9, WP_SOURCE_POPUP = 10, WP_ROTATE_POPUP = 11, BG_POPUP = 12, DOCK_POPUP = 14, ART_POPUP = 15, SIZE_POPUP = 16;
         /** The on/off choice the Yes/No popup is for: its Prefs key and title. */
         private String yesNoKey = "", yesNoTitle = "";
         /** Live TV choices: [value, name], built when the popup opens (the TV's inputs and installed apps). */
@@ -253,7 +227,7 @@ public class SettingsActivity extends Activity {
         private final Scene scene = new Scene();
         private Click click;
         private final Handler handler = new Handler(Looper.getMainLooper());
-        private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 13)
+        private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 12)
         private final RectF tmp = new RectF(), rowRect = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
         private String busyText = "";
@@ -285,8 +259,7 @@ public class SettingsActivity extends Activity {
             for (int i = 0; i < pop.length; i++) pop[i] = new Spring(0.28f, 0.85f, 0);
             for (int i = 0; i < popupPop.length; i++) popupPop[i] = new Spring(0.28f, 0.85f, 0);
             click = new Click(a);
-            HomeData.Weather wx = HomeData.get(a).weather;
-            Shaders.sky(scene.palette, System.currentTimeMillis(), wx.sunrise, wx.sunset);
+            Shaders.sky(scene.palette, System.currentTimeMillis());
             scene.setMotion(0.5f, 0.2f);
             scene.applyPalette();
             setFocusable(true);
@@ -374,7 +347,7 @@ public class SettingsActivity extends Activity {
 
         private boolean wantLight() {
             int t = HomeView.theme(getContext());
-            return t == HomeView.THEME_AUTO ? !HomeData.get(getContext()).isNight(System.currentTimeMillis()) : t == HomeView.THEME_LIGHT;
+            return t == HomeView.THEME_AUTO ? !Ui.isNight(System.currentTimeMillis()) : t == HomeView.THEME_LIGHT;
         }
 
         /** Background like Apple TV's Settings: a quiet gray gradient, dark or light. */
@@ -398,7 +371,6 @@ public class SettingsActivity extends Activity {
             if (screen == THEME) return Ui.tr("Tema", "Theme");
             if (screen == HOME_CHOICE) return Ui.tr("Início", "Home Screen");
             if (screen == SAVER) return Ui.tr("Tela de Descanso", "Screensaver");
-            if (screen == WEATHER) return Ui.tr("Previsão do Tempo", "Weather");
             if (screen == UPDATE) return Ui.tr("Sistema", "System");
             if (screen == HOMESCR) return Ui.tr("Tela Inicial", "Home Screen");
             if (screen == WALL) return Ui.tr("Papel de Parede", "Wallpaper");
@@ -414,8 +386,8 @@ public class SettingsActivity extends Activity {
         }
 
         private int rowCount() {
-            return screen == MAIN ? MAIN_ROWS : screen == RECS ? 5 : screen == THEME ? 3 : screen == WEATHER ? 4 : screen == WALL ? 4
-                    : screen == UPDATE ? updateRows() : screen == HOMESCR ? 13 : screen == SAVER ? 3 : 2;
+            return screen == MAIN ? MAIN_ROWS : screen == RECS ? 5 : screen == THEME ? 3 : screen == WALL ? 4
+                    : screen == UPDATE ? updateRows() : screen == HOMESCR ? 12 : screen == SAVER ? 3 : 2;
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -433,7 +405,7 @@ public class SettingsActivity extends Activity {
             drawBackdrop(c);
 
             // Apple TV's Settings: the title on top, the big icon on the left, the list on the right.
-            String parent = screen == MAIN ? null : (screen == THEME || screen == RECS || screen == WALL || screen == WEATHER)
+            String parent = screen == MAIN ? null : (screen == THEME || screen == RECS || screen == WALL)
                     ? Ui.tr("Tela inicial", "Home screen") : Ui.tr("Ajustes", "Settings");
             boolean page = choicePage();
             if (page) {
@@ -479,7 +451,6 @@ public class SettingsActivity extends Activity {
             else if (screen == RECS) drawRecsScreen(c);
             else if (screen == THEME) drawThemeScreen(c);
             else if (screen == SAVER) drawSaverScreen(c);
-            else if (screen == WEATHER) drawWeatherScreen(c);
             else if (screen == UPDATE) drawUpdateScreen(c);
             else if (screen == WALL) drawWallScreen(c);
             else if (screen == HOMESCR) drawHomeScreen(c);
@@ -556,8 +527,8 @@ public class SettingsActivity extends Activity {
 
         private static final String[] MAIN_ICONS = {"home", "tv", "bedtime", "sync"};
         private static final int[] MAIN_COLORS = {0xFF5E5CE6, 0xFF0A84FF, 0xFFBF5AF2, 0xFF30D158};
-        private static final String[] HOME_ICONS = {"clear_night", "sparkles", "apps", "tv", "home", "sparkles", "sparkles", "sparkles", "home", "sparkles", "cloud", "speaker", "live_tv"};
-        private static final int[] HOME_COLORS = {0xFF636366, 0xFFFF9F0A, 0xFF0A84FF, 0xFF30D158, 0xFFBF5AF2, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF64D2FF, 0xFFFF375F, 0xFFFF453A};
+        private static final String[] HOME_ICONS = {"clear_night", "sparkles", "apps", "tv", "home", "sparkles", "sparkles", "sparkles", "home", "sparkles", "speaker", "live_tv"};
+        private static final int[] HOME_COLORS = {0xFF636366, 0xFFFF9F0A, 0xFF0A84FF, 0xFF30D158, 0xFFBF5AF2, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFFFF375F, 0xFFFF453A};
 
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
@@ -636,7 +607,7 @@ public class SettingsActivity extends Activity {
         private String[] sectionTitles() {
             if (screen == MAIN) return new String[] {"LUME", Ui.tr("SISTEMA", "SYSTEM")};
             if (screen == HOMESCR) return new String[] {Ui.tr("APARÊNCIA", "APPEARANCE"), Ui.tr("BORDAS E FUNDOS", "OUTLINES AND BACKGROUNDS"),
-                    Ui.tr("NO TOPO E NO PAINEL", "TOP AND PANEL")};
+                    Ui.tr("OUTROS", "OTHER")};
             return null;
         }
 
@@ -739,7 +710,7 @@ public class SettingsActivity extends Activity {
         private android.graphics.Bitmap saverImg;
         private String saverCaption, saverMetaText;
 
-        /** Screensaver settings: a small live screensaver (its photo, the big clock with date and weather, the caption). */
+        /** Screensaver settings: a small live screensaver (its photo, the big clock with the date, the caption). */
         private void drawMiniSaver(Canvas c, float cx, float cy) {
             float pw = 620 * k, ph = 349 * k, r = 26 * k;
             RectF frame = new RectF(cx - pw / 2, cy - ph / 2, cx + pw / 2, cy + ph / 2);
@@ -774,9 +745,7 @@ public class SettingsActivity extends Activity {
             c.drawText(Ui.clock(now), frame.right - 80 * u, frame.top + 300 * u, clock);
             Paint small = Ui.text(Ui.semibold, 32 * u, 0xF2FFFFFF);
             small.setTextAlign(Paint.Align.RIGHT);
-            HomeData.Weather wx = HomeData.get(getContext()).weather;
-            String top = Ui.date(now) + (Double.isNaN(wx.temp) || !Prefs.showWeather(getContext()) ? "" : "   " + HomeData.degrees(wx.temp));
-            c.drawText(top, frame.right - 84 * u, frame.top + 110 * u, small);
+            c.drawText(Ui.date(now), frame.right - 84 * u, frame.top + 110 * u, small);
             if (saverCaption != null) {
                 Paint lab = Ui.text(Ui.semibold, 22 * u, 0xB3FFFFFF);
                 lab.setLetterSpacing(0.12f);
@@ -906,7 +875,7 @@ public class SettingsActivity extends Activity {
             if (screen == MAIN) {
                 String[][] t = {
                     {Ui.tr("Início", "Home"), Ui.tr("Usar o Lume ou voltar ao Início original da TV.", "Use Lume or go back to the TV's original home screen.")},
-                    {Ui.tr("Tela inicial", "Home screen"), Ui.tr("Tema, fundo com recomendações ou papel de parede, previsão do tempo e sons.", "Theme, background with recommendations or a wallpaper, weather and sounds.")},
+                    {Ui.tr("Tela inicial", "Home screen"), Ui.tr("Tema, fundo com recomendações, papel de parede ou cor, e sons.", "Theme, background with recommendations, a wallpaper or a color, and sounds.")},
                     {Ui.tr("Tela de descanso", "Screensaver"), Ui.tr("Quando ela começa e qual imagem mostra.", "When it starts and which image it shows.")},
                     {Ui.tr("Sistema", "System"), Ui.tr("Atualizações, diagnóstico e os Ajustes da TV.", "Updates, diagnostics and the TV's settings.")}};
                 return t[Math.min(focus, t.length - 1)];
@@ -920,19 +889,18 @@ public class SettingsActivity extends Activity {
             }
             if (screen == HOMESCR) {
                 String[][] t = {
-                    {Ui.tr("Tema", "Theme"), Ui.tr("Claro, escuro ou automático (segue o pôr do sol).", "Light, dark or automatic (follows the sunset).")},
-                    {Ui.tr("Fundo", "Background"), Ui.tr("Recomendações mostra os filmes e séries em alta. Papel de parede deixa só a foto, o relógio e o clima. Cor sólida é o mais leve: sem fotos para baixar.", "Recommendations shows what's trending. Wallpaper leaves just the photo, the clock and the weather. Solid color is the lightest: no photos to download.")},
+                    {Ui.tr("Tema", "Theme"), Ui.tr("Claro, escuro ou automático (escuro das 18h às 6h).", "Light, dark or automatic (dark from 6 PM to 6 AM).")},
+                    {Ui.tr("Fundo", "Background"), Ui.tr("Recomendações mostra os filmes e séries em alta. Papel de parede deixa só a foto e o relógio. Cor sólida é o mais leve: sem fotos para baixar.", "Recommendations shows what's trending. Wallpaper leaves just the photo and the clock. Solid color is the lightest: no photos to download.")},
                     {Prefs.recsOn(getContext()) ? Ui.tr("Recomendações", "Recommendations") : Ui.tr("Papel de parede", "Wallpaper"),
                             Prefs.recsOn(getContext()) ? Ui.tr("Chave do TMDB, categorias e o que o OK no card abre.", "TMDB key, genres and what OK on a card opens.")
                                     : Ui.tr("A fonte das imagens e qual aparece em cada modo.", "Where the images come from and which shows in each mode.")},
                     {Ui.tr("Ícones da barra", "Shelf icons"), Ui.tr("Seguir o tema: cards claros ou escuros como o Início. Arte original: as cores de cada app.", "Follow the theme: light or dark cards like the home screen. App's own art: each app's colors.")},
                     {Ui.tr("Tamanho da dock", "Dock size"), Ui.tr("Grande, média ou pequena. A barra encolhe e fica no mesmo lugar.", "Large, medium or small. The bar shrinks and stays in place.")},
-                    {Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Uma borda fina na pílula do clima e nos botões do topo.", "A thin outline on the weather pill and the top buttons.")},
+                    {Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Uma borda fina na pílula do relógio e nos botões do topo.", "A thin outline on the clock pill and the top buttons.")},
                     {Ui.tr("Fundo no topo", "Top background"), Ui.tr("O fundo de vidro da pílula e dos botões do topo. Desligado, ficam só os ícones e o texto.", "The glass behind the top pill and buttons. Off, just the icons and text.")},
                     {Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Uma borda fina em volta da dock, com ou sem o fundo.", "A thin outline around the dock, with or without its background.")},
                     {Ui.tr("Fundo da dock", "Dock background"), Ui.tr("A barra de vidro atrás dos apps. Desligado, ficam só os ícones.", "The glass bar behind the apps. Off, just the icons.")},
-                    {Ui.tr("Bordas do painel", "Panel outlines"), Ui.tr("Uma borda fina nos cards de atalhos, entradas e clima que abrem ao descer.", "A thin outline on the shortcuts, inputs and weather cards below the shelf.")},
-                    {Ui.tr("Previsão do tempo", "Weather"), Ui.tr("Cidade e onde o clima aparece no topo.", "City and where the weather shows at the top.")},
+                    {Ui.tr("Bordas do painel", "Panel outlines"), Ui.tr("Uma borda fina nos cards de atalhos e entradas que abrem ao descer.", "A thin outline on the shortcuts and inputs cards below the shelf.")},
                     {Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("Os cliques suaves ao mover o foco.", "The soft clicks when moving the focus.")},
                     {Ui.tr("TV ao Vivo", "Live TV"), Ui.tr("O app do atalho de TV ao Vivo, no painel que abre ao descer.", "The app of the Live TV shortcut, in the panel below the shelf.")}};
                 return t[Math.min(focus, t.length - 1)];
@@ -954,15 +922,14 @@ public class SettingsActivity extends Activity {
             clip.addRoundRect(frame, r, r, android.graphics.Path.Direction.CW);
             c.clipPath(clip);
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            // What the preview shows follows what has focus: the theme, the background, the weather and its place.
+            // What the preview shows follows what has focus: the theme and the background.
             Context ctx = getContext();
-            boolean dark = !light, recsOn = Prefs.recsOn(ctx), showWx = Prefs.showWeather(ctx), wxRight = Prefs.weatherRight(ctx);
+            boolean dark = !light, recsOn = Prefs.recsOn(ctx);
             android.graphics.Bitmap pick = null;
             if (screen == THEME && popup == NO_POPUP) {
-                dark = focus == 2 || (focus == 0 && HomeData.get(ctx).isNight(System.currentTimeMillis()));
+                dark = focus == 2 || (focus == 0 && Ui.isNight(System.currentTimeMillis()));
             }
             if (popup == BG_POPUP) recsOn = popupFocus == 0;
-            if (popup == WX_POS_POPUP) wxRight = popupFocus == 1;
             float ds = popup == SIZE_POPUP ? new float[] {1f, 0.84f, 0.68f}[Math.min(2, popupFocus)] : Prefs.dockScale(ctx);
             boolean art = popup == ART_POPUP ? popupFocus == 1 : Prefs.shelfArt(ctx);
             boolean topRim = Prefs.topBorders(ctx), topBg = Prefs.topBackground(ctx);
@@ -971,7 +938,6 @@ public class SettingsActivity extends Activity {
             rim.setStyle(Paint.Style.STROKE);
             rim.setStrokeWidth(Math.max(1.5f, 2 * pw / 1920f));     // visible even in the small preview
             rim.setColor(dark ? 0x40FFFFFF : 0x2E000000);     // the home screen's outline colors
-            if (popup == YES_NO_POPUP && yesNoKey.equals("weather")) showWx = popupFocus == 0;
             if ((popup == WP_PICK_POPUP || popup == WP_ROTATE_POPUP) && popupFocus < wpNames().size()) {
                 synchronized (wpThumbs) {
                     pick = wpThumbs.get(wpNames().get(popupFocus));
@@ -1003,38 +969,17 @@ public class SettingsActivity extends Activity {
                 return;
             }
             p.setColor(glass);
-            // Top: the weather (middle, or right after the clock), the clock, and the two buttons.
-            // Top, live: the weather (icon + temperature + sky), the clock, the network and Settings buttons.
+            // Top, live: the clock, the network and Settings buttons.
             Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            HomeData.Weather wx = HomeData.get(ctx).weather;
-            boolean hasWx = showWx && !Double.isNaN(wx.temp);
             Paint pill = Ui.text(Ui.semibold, 30 * u, ink);
             String clock = Ui.clock(System.currentTimeMillis());
             float clockW = pill.measureText(clock) + 60 * u;
             float clockRight = 1650;
-            if (hasWx) {     // one pill: the weather and the time, like the home screen
-                String wtxt = HomeData.degrees(wx.temp);
-                String sym = Symbols.weather(wx.code, wx.isDay);
-                float sw = Symbols.width(ctx, sym, 32 * u), ww = sw + 14 * u + pill.measureText(wtxt) + 44 * u + pill.measureText(clock) + 60 * u;
-                float wr = wxRight ? 1650 * u : 960 * u + ww / 2, wl = wr - ww;
-                RectF wp = new RectF(frame.left + wl, frame.top + 70 * u, frame.left + wr, frame.top + 136 * u);
-                if (topBg) c.drawRoundRect(wp, 33 * u, 33 * u, p);
-                if (topRim) c.drawRoundRect(wp, 33 * u, 33 * u, rim);
-                float tx = frame.left + wl + 30 * u, base = frame.top + 103 * u + Ui.halfCap(pill);
-                Symbols.draw(ctx, c, sym, tx + sw / 2, frame.top + 103 * u, 32 * u, ink);
-                c.drawText(wtxt, tx + sw + 14 * u, base, pill);
-                float lx = tx + sw + 14 * u + pill.measureText(wtxt) + 22 * u;
-                p.setColor(dark ? 0x4DFFFFFF : 0x4D1D1D1F);
-                c.drawRect(lx, frame.top + 88 * u, lx + 2 * u, frame.top + 118 * u, p);
-                c.drawText(clock, lx + 22 * u, base, pill);
-                p.setColor(glass);
-            } else {
-                RectF cr = new RectF(frame.left + clockRight * u - clockW, frame.top + 70 * u, frame.left + clockRight * u, frame.top + 136 * u);
-                if (topBg) c.drawRoundRect(cr, 33 * u, 33 * u, p);
-                if (topRim) c.drawRoundRect(cr, 33 * u, 33 * u, rim);
-                pill.setTextAlign(Paint.Align.CENTER);
-                c.drawText(clock, cr.centerX(), cr.centerY() + Ui.halfCap(pill), pill);
-            }
+            RectF cr = new RectF(frame.left + clockRight * u - clockW, frame.top + 70 * u, frame.left + clockRight * u, frame.top + 136 * u);
+            if (topBg) c.drawRoundRect(cr, 33 * u, 33 * u, p);
+            if (topRim) c.drawRoundRect(cr, 33 * u, 33 * u, rim);
+            pill.setTextAlign(Paint.Align.CENTER);
+            c.drawText(clock, cr.centerX(), cr.centerY() + Ui.halfCap(pill), pill);
             if (topBg) {
                 c.drawCircle(frame.left + 1716 * u, frame.top + 103 * u, 34 * u, p);
                 c.drawCircle(frame.left + 1806 * u, frame.top + 103 * u, 34 * u, p);
@@ -1145,7 +1090,7 @@ public class SettingsActivity extends Activity {
 
         /**
          * The preview of the panel below the shelf, as it really is: the shortcuts (Ajustes do Lume focused), the TV's
-         * inputs with their state, and the live weather (now, next hours, next days), over the blurred background.
+         * inputs with their state, over the blurred background.
          */
         private void drawMiniPanel(Canvas c, RectF frame, float u, boolean dark, int ink, boolean outline, Paint rim) {
             Context ctx = getContext();
@@ -1153,17 +1098,14 @@ public class SettingsActivity extends Activity {
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
             p.setColor(dark ? 0x59000000 : 0x40FFFFFF);
             c.drawRect(frame, p);
-            int dim = dark ? 0xA6FFFFFF : 0xFF6E6E73, cloud = dark ? 0xFFF2F2F5 : 0xFF2C2F36;
+            int dim = dark ? 0xA6FFFFFF : 0xFF6E6E73;
             float pw = 1180, left = 960 - pw / 2;
-            // The two cards together centered on the screen, as on the TV.
-            RectF top = new RectF(frame.left + left * u, frame.top + 105 * u, frame.left + (left + pw) * u, frame.top + 655 * u);
-            RectF bottom = new RectF(top.left, frame.top + 675 * u, top.right, frame.top + 975 * u);
+            // The card centered on the screen, as on the TV.
+            RectF top = new RectF(frame.left + left * u, frame.top + 265 * u, frame.left + (left + pw) * u, frame.top + 815 * u);
             Paint card = new Paint(Paint.ANTI_ALIAS_FLAG);
             card.setColor(dark ? 0xA6111113 : 0xB3FFFFFF);     // the dock's glass, as on the TV
-            for (RectF r : new RectF[] {top, bottom}) {
-                c.drawRoundRect(r, 44 * u, 44 * u, card);
-                if (outline) c.drawRoundRect(r, 44 * u, 44 * u, rim);
-            }
+            c.drawRoundRect(top, 44 * u, 44 * u, card);
+            if (outline) c.drawRoundRect(top, 44 * u, 44 * u, rim);
             Paint head = Ui.text(Ui.semibold, 25 * u, dim);
             Paint label = Ui.text(Ui.semibold, 30 * u, ink);
             label.setTextAlign(Paint.Align.CENTER);
@@ -1203,49 +1145,6 @@ public class SettingsActivity extends Activity {
                 label.setColor(col);
                 c.drawText(it.label, t.centerX(), t.top + (input ? 93 : 108) * u, label);
                 if (input) c.drawText(it.connected ? Ui.tr("Conectado", "Connected") : Ui.tr("Desligado", "Off"), t.centerX(), t.top + 126 * u, sub);
-            }
-            // Weather, live.
-            HomeData data = HomeData.get(ctx);
-            HomeData.Weather wx = data.weather;
-            if (Double.isNaN(wx.temp)) return;
-            Paint city = Ui.text(Ui.medium, 40 * u, ink), temp = Ui.numbers(Ui.displaySemibold, 112 * u, ink);
-            Paint text = Ui.text(Ui.medium, 26 * u, ink), small = Ui.text(Ui.medium, 24 * u, dim);
-            float x = bottom.left + 50 * u;
-            c.drawText(data.city.isEmpty() ? Ui.tr("Clima", "Weather") : data.city, x, bottom.top + 74 * u, city);
-            String t = HomeData.degrees(wx.temp);
-            c.drawText(t, x, bottom.top + 184 * u, temp);
-            Icons.weather(c, wx.code, wx.isDay, x + temp.measureText(t) + 70 * u, bottom.top + 140 * u, 100 * u, cloud);
-            c.drawText(HomeData.condition(wx.code, wx.isDay), x, bottom.top + 230 * u, text);
-            c.drawText(Ui.en ? "H: " + HomeData.degrees(wx.max) + "   L: " + HomeData.degrees(wx.min)
-                    : "Máx. " + HomeData.degrees(wx.max) + "   Mín. " + HomeData.degrees(wx.min), x, bottom.top + 266 * u, small);
-            float d1 = bottom.left + 400 * u, d2 = bottom.left + 800 * u;
-            Paint line = new Paint();
-            line.setColor(dark ? 0x1FFFFFFF : 0x1A000000);
-            c.drawRect(d1, bottom.top + 40 * u, d1 + 1.5f * u, bottom.bottom - 40 * u, line);
-            c.drawRect(d2, bottom.top + 40 * u, d2 + 1.5f * u, bottom.bottom - 40 * u, line);
-            c.drawText(Ui.tr("PRÓXIMAS HORAS", "NEXT HOURS"), d1 + 40 * u, bottom.top + 70 * u, head);
-            Paint hour = Ui.text(Ui.medium, 23 * u, ink), htemp = Ui.numbers(Ui.semibold, 34 * u, ink);
-            hour.setTextAlign(Paint.Align.CENTER);
-            htemp.setTextAlign(Paint.Align.CENTER);
-            float cw = (d2 - d1 - 50 * u) / 4;
-            for (int i = 0; i < 4 && i <= wx.hours.size(); i++) {
-                float hc = d1 + 25 * u + cw * (i + 0.5f);
-                int j = i - 1;
-                c.drawText(i == 0 ? Ui.tr("Agora", "Now") : HomeData.hour(wx.hours.get(j)), hc, bottom.top + 122 * u, hour);
-                Icons.weather(c, i == 0 ? wx.code : wx.hourCode.get(j), i == 0 ? wx.isDay : wx.hourDay.get(j), hc, bottom.top + 176 * u, 50 * u, cloud);
-                c.drawText(HomeData.degrees(i == 0 ? wx.temp : wx.hourTemp.get(j)), hc, bottom.top + 248 * u, htemp);
-            }
-            c.drawText(Ui.tr("PRÓXIMOS DIAS", "NEXT DAYS"), d2 + 40 * u, bottom.top + 70 * u, head);
-            Paint day = Ui.text(Ui.medium, 25 * u, ink), num = Ui.numbers(Ui.semibold, 26 * u, ink);
-            num.setTextAlign(Paint.Align.RIGHT);
-            for (int i = 0; i < wx.dayName.size(); i++) {
-                float base = bottom.top + 128 * u + i * 60 * u;
-                c.drawText(wx.dayName.get(i), d2 + 40 * u, base, day);
-                Icons.weather(c, wx.dayCode.get(i), true, d2 + 160 * u, base - 9 * u, 38 * u, cloud);
-                num.setColor(dim);
-                c.drawText(HomeData.degrees(wx.dayMin.get(i)), bottom.right - 124 * u, base, num);
-                num.setColor(ink);
-                c.drawText(HomeData.degrees(wx.dayMax.get(i)), bottom.right - 40 * u, base, num);
             }
         }
 
@@ -1616,7 +1515,7 @@ public class SettingsActivity extends Activity {
             c.drawText(note, LIST_X * k + 30 * k, (listEnd(3) + 40) * k, hint);
         }
 
-        // MARK: Home screen: theme, background (recommendations or wallpaper), weather, sounds, Live TV
+        // MARK: Home screen: theme, background (recommendations, wallpaper or color), sounds, Live TV
 
         private String backgroundName() {
             Context ctx = getContext();
@@ -1643,18 +1542,18 @@ public class SettingsActivity extends Activity {
                     Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Fundo no topo", "Top background"),
                     Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Fundo da dock", "Dock background"),
                     Ui.tr("Bordas do painel", "Panel outlines"),
-                    Ui.tr("Previsão do tempo", "Weather"), Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("TV ao Vivo", "Live TV")};
+                    Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("TV ao Vivo", "Live TV")};
             String[] values = {themes()[HomeView.theme(ctx)], backgroundName(),
                     recsOn ? (hasKey ? Prefs.genreNames(ctx) : Ui.tr("Sem chave do TMDB", "No TMDB key")) : colorName != null ? colorName : Wallpapers.sourceName(ctx),
                     shelfArtNames()[Prefs.shelfArt(ctx) ? 1 : 0], dockSizeNames()[Prefs.dockSize(ctx)], "", "", "", "", "",
-                    weatherName(), Prefs.sounds(ctx) ? Ui.tr("Sim", "On") : Ui.tr("Não", "Off"), liveName()};
-            for (int i = 0; i < 13; i++) {
+                    Prefs.sounds(ctx) ? Ui.tr("Sim", "On") : Ui.tr("Não", "Off"), liveName()};
+            for (int i = 0; i < 12; i++) {
                 layoutRow(i);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(fg(0xF2FFFFFF), INK, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowIcon(c, HOME_ICONS[i], HOME_COLORS[i]), base, rowLabel);
-                if (i == 11) rowToggle(c, Prefs.sounds(ctx));
+                if (i == 10) rowToggle(c, Prefs.sounds(ctx));
                 else if (i == 5) rowToggle(c, Prefs.topBorders(ctx));
                 else if (i == 6) rowToggle(c, Prefs.topBackground(ctx));
                 else if (i == 7) rowToggle(c, Prefs.dockBorders(ctx));
@@ -1818,46 +1717,12 @@ public class SettingsActivity extends Activity {
             }).start();
         }
 
-        private String weatherName() {
-            Context c = getContext();
-            if (!Prefs.showWeather(c)) return Ui.tr("Desligada", "Off");
-            String city = HomeData.get(c).city;
-            return city.isEmpty() ? Ui.tr("Ligada", "On") : city;
-        }
-
-        /** Weather: show it or not, where it's for (the internet connection's location or a typed city). */
-        private void drawWeatherScreen(Canvas c) {
-            Context ctx = getContext();
-            String[] labels = {Ui.tr("Mostrar previsão", "Show weather"), Ui.tr("Localização", "Location"),
-                    Ui.tr("Cidade", "City"), Ui.tr("Posição no topo", "Place at the top")};
-            String city = Prefs.weatherCityName(ctx);
-            String[] values = {Prefs.showWeather(ctx) ? Ui.tr("Sim", "On") : Ui.tr("Não", "Off"),
-                    Prefs.manualWeather(ctx) ? Ui.tr("Cidade escolhida", "Chosen city") : Ui.tr("Automática (internet)", "Automatic (internet)"),
-                    city.isEmpty() ? Ui.tr("Nenhuma", "None") : city, wxPosNames()[Prefs.weatherRight(ctx) ? 1 : 0]};
-            for (int i = 0; i < 4; i++) {
-                layoutRow(i);
-                float f = drawRowBackground(c, i);
-                rowLabel.setColor(blend(fg(0xF2FFFFFF), INK, f));
-                float base = rowRect.centerY() + Ui.halfCap(rowLabel);
-                c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
-                valueAndChevron(c, values[i], base, f);
-            }
-            Paint hint = Ui.text(Ui.regular, 23 * k, fg(0x8CFFFFFF));
-            String now = HomeData.get(ctx).city;
-            c.drawText(Ui.tr("Agora: ", "Now: ") + (now.isEmpty() ? "—" : now) + Ui.tr(" · o pôr do sol daqui troca o tema", " · its sunset switches the theme"),
-                    LIST_X * k + 30 * k, (listEnd(4) + 40) * k, hint);
-        }
-
         private String[] dockSizeNames() {
             return new String[] {Ui.tr("Grande", "Large"), Ui.tr("Média", "Medium"), Ui.tr("Pequena", "Small")};
         }
 
         private String[] shelfArtNames() {
             return new String[] {Ui.tr("Seguir o tema", "Follow the theme"), Ui.tr("Arte original do app", "App's own art")};
-        }
-
-        private String[] wxPosNames() {
-            return new String[] {Ui.tr("No centro", "In the middle"), Ui.tr("À direita", "On the right")};
         }
 
         /** Saves the wait with the TV's own ADB (this app may not write system settings itself). */
@@ -1876,7 +1741,7 @@ public class SettingsActivity extends Activity {
         /** Theme: a list like Recommendations, with a check on the current one. */
         private void drawThemeScreen(Canvas c) {
             String[] names = themes();
-            String[] notes = {Ui.tr("Segue o pôr do sol", "Follows the sunset"),
+            String[] notes = {Ui.tr("Escuro das 18h às 6h", "Dark from 6 PM to 6 AM"),
                     Ui.tr("Sempre claro", "Always light"), Ui.tr("Sempre escuro", "Always dark")};
             int current = HomeView.theme(getContext());
             for (int i = 0; i < 3; i++) {
@@ -1946,12 +1811,6 @@ public class SettingsActivity extends Activity {
                         + (mine.isEmpty() ? "none now" : String.join(", ", mine)) + "). Known apps: "
                         + String.join(", ", Recs.knownServices(getContext(), false)) + ".");
             }
-            if (yesNoKey.equals("weather")) {
-                return Ui.tr("Sim: o tempo no topo do Início, na gaveta e na tela de descanso.\n"
-                        + "Não: some de todos esses lugares.",
-                        "On: the weather on top of the home screen, in the drawer and on the screensaver.\n"
-                        + "Off: it's gone from all of them.");
-            }
             if (yesNoKey.equals("recs_on")) {
                 return Ui.tr("Sim: os cards com o que está em alta, e as fotos deles no fundo e na tela de descanso.\n"
                         + "Não: sem cards; o fundo e a tela de descanso mostram os papéis de parede.",
@@ -1972,7 +1831,6 @@ public class SettingsActivity extends Activity {
             if (popup == LIVE_POPUP) return Ui.tr("TV ao Vivo abre", "Live TV opens");
             if (popup == SAVER_POPUP) return Ui.tr("Começar após", "Start after");
             if (popup == YES_NO_POPUP) return yesNoTitle;
-            if (popup == PLACE_POPUP) return Ui.tr("Localização", "Location");
             if (popup == WP_MODE_POPUP) return wpSlot == Prefs.WP_SAVER ? Ui.tr("Tela de descanso", "Screensaver")
                     : wpSlot == Prefs.WP_DARK ? Ui.tr("Início no modo escuro", "Home in dark mode") : Ui.tr("Início no modo claro", "Home in light mode");
             if (popup == WP_PICK_POPUP) return Ui.tr("Imagem fixa", "Fixed image");
@@ -1982,7 +1840,6 @@ public class SettingsActivity extends Activity {
             if (popup == ART_POPUP) return Ui.tr("Ícones da barra", "Shelf icons");
             if (popup == SIZE_POPUP) return Ui.tr("Tamanho da dock", "Dock size");
             if (popup == DOCK_POPUP) return Ui.tr("Apps da barra", "Shelf apps");
-            if (popup == WX_POS_POPUP) return Ui.tr("Posição no topo", "Place at the top");
             return popup == THEME_POPUP ? Ui.tr("Tema", "Theme") : popup == GENRE_POPUP ? Ui.tr("Categorias", "Genres")
                     : Ui.tr("Ao apertar OK no card", "OK on a card");
         }
@@ -1991,8 +1848,6 @@ public class SettingsActivity extends Activity {
             if (popup == THEME_POPUP) return themes();
             if (popup == ACTION_POPUP) return actions();
             if (popup == YES_NO_POPUP) return new String[] {Ui.tr("Sim", "On"), Ui.tr("Não", "Off")};
-            if (popup == PLACE_POPUP) return new String[] {Ui.tr("Automática (pela internet)", "Automatic (internet)"),
-                    Ui.tr("Cidade escolhida", "Chosen city")};
             if (popup == WP_MODE_POPUP) return wpModeOptions();
             if (popup == WP_SOURCE_POPUP) return wpSources();
             if (popup == ART_POPUP) return shelfArtNames();
@@ -2011,7 +1866,6 @@ public class SettingsActivity extends Activity {
                 for (int i = 0; i < colors.length; i++) out[2 + i] = Ui.tr("Cor sólida: ", "Solid color: ") + colors[i];
                 return out;
             }
-            if (popup == WX_POS_POPUP) return wxPosNames();
             if (popup == WP_PICK_POPUP || popup == WP_ROTATE_POPUP) {
                 List<String> names = wpNames();
                 String[] out = new String[names.size()];
@@ -2038,7 +1892,6 @@ public class SettingsActivity extends Activity {
             if (popup == ACTION_POPUP) return actionIndex() == i;
             if (popup == SAVER_POPUP) return SAVER_MINUTES[i] == saverMinutes();
             if (popup == YES_NO_POPUP) return yesNo() == (i == 0);
-            if (popup == PLACE_POPUP) return Prefs.manualWeather(getContext()) == (i == 1);
             if (popup == LIVE_POPUP) return liveChoices.get(i)[0].equals(Prefs.liveTv(getContext()));
             if (popup == WP_MODE_POPUP) {
                 String v = Prefs.wallpaper(getContext(), wpSlot), mine = wpModeValue(i);
@@ -2054,7 +1907,6 @@ public class SettingsActivity extends Activity {
                 if (Prefs.recsOn(ctx)) return i == 0;
                 return Prefs.bgColor(ctx) == i - 2;     // wallpaper is color -1, at i = 1
             }
-            if (popup == WX_POS_POPUP) return Prefs.weatherRight(getContext()) == (i == 1);
             if (popup == WP_ROTATE_POPUP) return !Prefs.wallpaperSkip(getContext()).contains(wpNames().get(i));
             return Prefs.genres(getContext()).contains(Prefs.GENRES[i][0]);
         }
@@ -2127,7 +1979,6 @@ public class SettingsActivity extends Activity {
         private boolean yesNo() {
             Context c = getContext();
             if (yesNoKey.equals("sounds")) return Prefs.sounds(c);
-            if (yesNoKey.equals("weather")) return Prefs.showWeather(c);
             if (yesNoKey.equals("recs_recent")) return Prefs.recent(c);
             if (yesNoKey.equals("recs_on")) return Prefs.recsOn(c);
             return Prefs.anyService(c);
@@ -2142,8 +1993,8 @@ public class SettingsActivity extends Activity {
         private void openPopup(int kind) {
             popup = kind;
             popupFocus = kind == THEME_POPUP ? HomeView.theme(getContext()) : kind == ACTION_POPUP ? actionIndex() : 0;
-            if (kind == LIVE_POPUP || kind == SAVER_POPUP || kind == YES_NO_POPUP || kind == PLACE_POPUP || kind == WP_MODE_POPUP
-                    || kind == WP_PICK_POPUP || kind == WP_SOURCE_POPUP || kind == BG_POPUP || kind == WX_POS_POPUP || kind == ART_POPUP || kind == SIZE_POPUP) {
+            if (kind == LIVE_POPUP || kind == SAVER_POPUP || kind == YES_NO_POPUP || kind == WP_MODE_POPUP
+                    || kind == WP_PICK_POPUP || kind == WP_SOURCE_POPUP || kind == BG_POPUP || kind == ART_POPUP || kind == SIZE_POPUP) {
                 for (int i = 0; i < popupOptions().length; i++) if (popupChecked(i)) popupFocus = i;
             }
             for (Spring s : popupPop) s.snap(0);
@@ -2281,17 +2132,6 @@ public class SettingsActivity extends Activity {
                         } else if (popup == YES_NO_POPUP) {
                             Prefs.set(c, yesNoKey, popupFocus == 0);
                             popup = NO_POPUP;
-                        } else if (popup == PLACE_POPUP) {
-                            popup = NO_POPUP;
-                            if (popupFocus == 0) {
-                                Prefs.set(c, "weather_manual", false);
-                                HomeData.get(c).relocate();
-                            } else if (Prefs.weatherCity(c) == null) {
-                                activity.askCity();   // no city yet: ask for one
-                            } else {
-                                Prefs.set(c, "weather_manual", true);
-                                HomeData.get(c).relocate();
-                            }
                         } else if (popup == SAVER_POPUP) {
                             setSaverMinutes(SAVER_MINUTES[popupFocus]);
                             popup = NO_POPUP;
@@ -2334,9 +2174,6 @@ public class SettingsActivity extends Activity {
                             Prefs.setBackground(c, popupFocus == 0, popupFocus - 2);
                             popup = NO_POPUP;
                             if (popupFocus == 1 && Wallpapers.names(c).isEmpty()) syncWallpapers();
-                        } else if (popup == WX_POS_POPUP) {
-                            Prefs.set(c, "weather_right", popupFocus == 1);
-                            popup = NO_POPUP;
                         } else if (popup == WP_ROTATE_POPUP) {
                             Prefs.toggleWallpaperSkip(c, wpNames().get(popupFocus));     // stays open: tick several
                         } else if (popup == WP_PICK_POPUP) {
@@ -2367,8 +2204,8 @@ public class SettingsActivity extends Activity {
 
         /** One level up: Home screen's submenus go back to it, the rest to the main list (on the row they came from). */
         private void goBack() {
-            if (screen == THEME || screen == RECS || screen == WALL || screen == WEATHER) {
-                focus = screen == THEME ? 0 : screen == WEATHER ? 10 : 2;
+            if (screen == THEME || screen == RECS || screen == WALL) {
+                focus = screen == THEME ? 0 : 2;
                 screen = HOMESCR;
             } else {
                 focus = screen == HOMESCR ? 1 : screen == SAVER ? 2 : screen == UPDATE ? 3 : 0;
@@ -2406,11 +2243,6 @@ public class SettingsActivity extends Activity {
                     HomeButton.openTvSettings(c);
                     activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 }
-            } else if (screen == WEATHER) {
-                if (focus == 0) openYesNo("weather", Ui.tr("Mostrar previsão", "Show weather"));
-                else if (focus == 1) openPopup(PLACE_POPUP);
-                else if (focus == 2) activity.askCity();
-                else openPopup(WX_POS_POPUP);
             } else if (screen == SAVER) {
                 if (focus == 0) {
                     pause();
@@ -2459,8 +2291,7 @@ public class SettingsActivity extends Activity {
                     }
                 } else if (focus == 3) openPopup(ART_POPUP);
                 else if (focus == 4) openPopup(SIZE_POPUP);
-                else if (focus == 10) open(WEATHER, 0);
-                else if (focus == 11) openYesNo("sounds", Ui.tr("Sons ao navegar", "Navigation sounds"));
+                else if (focus == 10) openYesNo("sounds", Ui.tr("Sons ao navegar", "Navigation sounds"));
                 // Toggles: flip in place.
                 else if (focus == 5) Prefs.set(c, "border_top", !Prefs.topBorders(c));
                 else if (focus == 6) Prefs.set(c, "bg_top", !Prefs.topBackground(c));

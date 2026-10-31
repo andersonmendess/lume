@@ -12,15 +12,15 @@ before you do it, and let them do the taps on the TV.
 
 ## Installing it for someone
 
-1. **Ask** for the TV's IP address and their city, if they didn't say.
+1. **Ask** for the TV's IP address, if they didn't say.
 2. **Tools:** a JDK 17+, the Android SDK command-line tools (build-tools 34+, platform android-34) and adb. Check
    what's already there (`java -version`, `$ANDROID_HOME`, `adb version`) and install only what's missing.
    - macOS: `brew install --cask temurin android-commandlinetools android-platform-tools`, then
      `sdkmanager "build-tools;34.0.0" "platforms;android-34"`.
    - Linux: OpenJDK 17, Android's command-line tools and adb from the package manager, then the same `sdkmanager` line.
    - Windows: WSL, then as on Linux.
-3. **Settings:** run `./build.sh` once; it creates `config.properties`. Fill in `latitude` and `longitude` (decimal
-   degrees) and `city` for their city, `tmdb_region` (two-letter country), and `temperature` to match.
+3. **Settings:** run `./build.sh` once; it creates `config.properties`. Fill in `tmdb_region` (their two-letter
+   country).
 4. **The TMDB key is theirs and secret.** Ask them to create one (free: themoviedb.org → Settings → API) and paste it
    after `tmdb_key=` in `config.properties` themselves. Don't ask for it in the chat, never print it, never commit
    it. If they paste it in the chat anyway, put it only in `config.properties`.

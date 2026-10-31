@@ -300,10 +300,9 @@ final class Shaders {
     private static final int[] DUSK = {0x10173A, 0x36348A, 0x8A4BB0};
 
     /**
-     * Palette for the sun's current position at your location. Uses the sunrise and sunset times from the last weather
-     * fetch (they shift ~1 min a day, so yesterday's times are fine today); without data, 5:30 and 17:40.
+     * Palette for the sun's position at a fixed day: sunrise at 6:00 and sunset at 18:00, the automatic theme's hours.
      */
-    static void sky(Palette out, long now, long sunrise, long sunset) {
+    static void sky(Palette out, long now) {
         java.util.Calendar cal = java.util.Calendar.getInstance();
         cal.setTimeInMillis(now);
         cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
@@ -311,8 +310,8 @@ final class Shaders {
         cal.set(java.util.Calendar.SECOND, 0);
         cal.set(java.util.Calendar.MILLISECOND, 0);
         long midnight = cal.getTimeInMillis();
-        long rise = midnight + timeOfDay(sunrise, (5 * 60 + 30) * 60_000L);
-        long set = midnight + timeOfDay(sunset, (17 * 60 + 40) * 60_000L);
+        long rise = midnight + 6 * 3600_000L;
+        long set = midnight + 18 * 3600_000L;
         long m = 60_000L;
         long[] at = {rise - 60 * m, rise - 15 * m, rise + 45 * m, set - 45 * m, set, set + 45 * m, set + 105 * m};
         int[][] key = {NIGHT, DAWN, DAY, DAY, SUNSET, DUSK, NIGHT};
@@ -327,14 +326,6 @@ final class Shaders {
                 return;
             }
         }
-    }
-
-    /** Time of day (ms since local midnight) of an instant; `fallback` if there is no data. */
-    static long timeOfDay(long at, long fallback) {
-        if (at == 0) return fallback;
-        java.util.Calendar c = java.util.Calendar.getInstance();
-        c.setTimeInMillis(at);
-        return ((c.get(java.util.Calendar.HOUR_OF_DAY) * 60L + c.get(java.util.Calendar.MINUTE)) * 60 + c.get(java.util.Calendar.SECOND)) * 1000L;
     }
 
     /** Screensaver: always the night palette, by day and by night. */

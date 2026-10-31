@@ -23,7 +23,7 @@ command -v "$JAVAC" >/dev/null 2>&1 || { echo "JDK not found. Install JDK 17 and
 # --- Settings: config.properties -> Config.java
 if [ ! -f config.properties ]; then
   cp config.example.properties config.properties
-  echo "Created config.properties: add your TMDB key and your city there (optional), then build again."
+  echo "Created config.properties: add your TMDB key there (optional), then build again."
 fi
 prop() {
   local v
@@ -31,13 +31,6 @@ prop() {
   v="$(printf '%s' "$v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr -d '"\\')"
   printf '%s' "${v:-$2}"
 }
-number() {
-  local v; v="$(prop "$1" "$2")"
-  [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || { echo "config.properties: $1 must be a number (got \"$v\")" >&2; exit 1; }
-  printf '%s' "$v"
-}
-LAT="$(number latitude 40.7128)"
-LON="$(number longitude -74.0060)"
 ASSIST=false; [ "$(prop disable_assistant false)" = "true" ] && ASSIST=true
 RECENT=false; [ "$(prop recs_recent false)" = "true" ] && RECENT=true
 ALLRECS=false; [ "$(prop recs_all false)" = "true" ] && ALLRECS=true
@@ -59,11 +52,7 @@ final class Config {
     static final String TMDB_REGION = "$(prop tmdb_region US)";
     static final String TELEGRAM_TOKEN = "$(prop telegram_bot_token '')";
     static final String TELEGRAM_CHAT = "$(prop telegram_chat_id '')";
-    static final String LATITUDE = "$LAT";
-    static final String LONGITUDE = "$LON";
-    static final String CITY = "$(prop city '')";
     static final String LANGUAGE = "$(prop language auto)";
-    static final String TEMPERATURE = "$(prop temperature auto)";
     static final boolean DISABLE_ASSISTANT = $ASSIST;
     static final boolean RECS_ALL = $ALLRECS;
     static final boolean RECS_RECENT = $RECENT;

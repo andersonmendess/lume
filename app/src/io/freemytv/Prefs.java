@@ -77,7 +77,6 @@ final class Prefs {
         ui(c).edit().putString("tmdb_key", key == null ? "" : key.trim()).apply();
     }
 
-    /** Weather on the home screen, in the drawer and on the screensaver (the sunset still sets the theme). */
     /** The recommendations (cards and their photos). Off: the home screen and the screensaver use the wallpapers. */
     static boolean recsOn(Context c) {
         return ui(c).getBoolean("recs_on", true);
@@ -134,38 +133,9 @@ final class Prefs {
         ui(c).edit().putString(WP_KEYS[slot], value).apply();
     }
 
-    /** The weather pill at the top: true = right, next to the clock; false = in the middle. */
-    static boolean weatherRight(Context c) {
-        return ui(c).getBoolean("weather_right", true);
-    }
-
     /** Shelf icons: false = each app's logo on Lume's tile (default); true = the app's own TV art, untouched. */
     static boolean shelfArt(Context c) {
         return ui(c).getBoolean("shelf_art", false);
-    }
-
-    static boolean showWeather(Context c) {
-        return ui(c).getBoolean("weather", true);
-    }
-
-    /** A city typed in Home Settings ({name, latitude, longitude}), or null: then the internet connection's location. */
-    static String[] weatherCity(Context c) {
-        SharedPreferences p = ui(c);
-        if (!p.getBoolean("weather_manual", false) || !p.contains("weather_lat")) return null;
-        return new String[] {p.getString("weather_city", ""), p.getString("weather_lat", ""), p.getString("weather_lon", "")};
-    }
-
-    static boolean manualWeather(Context c) {
-        return ui(c).getBoolean("weather_manual", false);
-    }
-
-    static void setWeatherCity(Context c, String name, String lat, String lon) {
-        ui(c).edit().putBoolean("weather_manual", true).putString("weather_city", name).putString("weather_lat", lat)
-                .putString("weather_lon", lon).apply();
-    }
-
-    static String weatherCityName(Context c) {
-        return ui(c).getString("weather_city", "");
     }
 
     /** Navigation sounds (the soft clicks on the home screen and in Settings). */
