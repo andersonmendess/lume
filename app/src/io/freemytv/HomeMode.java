@@ -1,7 +1,9 @@
 package io.freemytv;
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.os.Build;
+import android.os.Process;
 import android.os.SystemClock;
 
 import org.json.JSONArray;
@@ -639,13 +641,29 @@ final class HomeMode {
 
     private static void busy(Context c, String text) {
         JSONObject s = state(c);
-        try { s.put("busy", text).put("error", ""); } catch (JSONException ignored) {}
+        try { s.put("busy", text).put("busyPid", Process.myPid()).put("error", ""); } catch (JSONException ignored) {}
         save(c, s);
+    }
+
+    /** The switch's progress text, or "" if none is running. A switch killed midway (force stop, crash) never reaches
+     *  done(), so its text only counts while the main process that wrote it is still alive. */
+    static String busyText(Context c, JSONObject s) {
+        String text = s.optString("busy");
+        if (text.isEmpty()) return "";
+        int pid = s.optInt("busyPid");
+        ActivityManager am = c.getSystemService(ActivityManager.class);
+        List<ActivityManager.RunningAppProcessInfo> running = am == null ? null : am.getRunningAppProcesses();
+        if (pid == 0 || running == null) return "";
+        for (ActivityManager.RunningAppProcessInfo p : running) {
+            if (p.pid == pid && p.processName.equals(c.getPackageName())) return text;
+        }
+        return "";
     }
 
     private static void done(Context c, String error) {
         JSONObject s = state(c);
         s.remove("busy");
+        s.remove("busyPid");
         try { s.put("error", error == null ? "" : error); } catch (JSONException ignored) {}
         save(c, s);
         if (error != null) {

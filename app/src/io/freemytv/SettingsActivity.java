@@ -256,6 +256,7 @@ public class SettingsActivity extends Activity {
         private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 13)
         private final RectF tmp = new RectF(), rowRect = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
+        private String busyText = "";
         private boolean hasKey;
         private int screen = MAIN, focus;
         private boolean running, okDown, backDown;
@@ -271,7 +272,8 @@ public class SettingsActivity extends Activity {
                 state = HomeMode.state(getContext());
                 hasKey = Recs.hasKey(getContext());
                 recs = Recs.status(getContext());
-                if (!state.optString("busy").isEmpty()) pendingAt = 0;
+                busyText = HomeMode.busyText(getContext(), state);
+                if (!busyText.isEmpty()) pendingAt = 0;
                 invalidate();
                 handler.postDelayed(this, 500);
             }
@@ -404,7 +406,7 @@ public class SettingsActivity extends Activity {
         }
 
         private boolean busy() {
-            return !state.optString("busy").isEmpty() || (pendingAt != 0 && SystemClock.uptimeMillis() - pendingAt < 10_000);
+            return !busyText.isEmpty() || (pendingAt != 0 && SystemClock.uptimeMillis() - pendingAt < 10_000);
         }
 
         private boolean freeActive() {
@@ -559,7 +561,6 @@ public class SettingsActivity extends Activity {
 
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
-            String busyText = state.optString("busy");
             String mode = freeActive() ? "Lume" : Ui.tr("Original", "Original");
             String[] labels = {Ui.tr("Início", "Home"), Ui.tr("Tela inicial", "Home screen"), Ui.tr("Tela de descanso", "Screensaver"),
                     Ui.tr("Sistema", "System")};

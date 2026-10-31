@@ -103,7 +103,9 @@ final class Adb implements Closeable {
                     adb.send(AUTH, AUTH_RSAPUBLICKEY, 0, publicKeyBlob(keys.getPublic()));
                     offeredKey = true;
                     if (approval != null) approval.waiting();
-                    s.setSoTimeout(approvalMs);
+                    Adb approved = awaitApproval(adb, keys, approvalMs);
+                    if (approved != adb) adb.close();
+                    return approved;
                 } else {
                     throw new IOException("the TV rejected the app's key");
                 }
@@ -116,6 +118,55 @@ final class Adb implements Closeable {
             adb.close();
             throw e;
         }
+    }
+
+    /**
+     * Waits for "Allow USB debugging?" to be accepted. Some adbd versions (Android 10 on the Mi TV Stick) save the key
+     * but never send CNXN on the connection that offered it, so a fresh connection signed with the key is tried every
+     * 2 seconds as well; whichever gets through first is returned.
+     */
+    private static Adb awaitApproval(Adb adb, KeyPair keys, int approvalMs) throws IOException {
+        long deadline = System.currentTimeMillis() + approvalMs;
+        adb.socket.setSoTimeout(2000);
+        while (true) {
+            try {
+                Message m = adb.read();
+                if (m.command == CNXN) {
+                    adb.socket.setSoTimeout(20_000);
+                    return adb;
+                }
+                // Another token on the waiting connection: the prompt was dismissed or the key refused.
+                throw new IOException("the TV rejected the app's key");
+            } catch (SocketTimeoutException e) {
+                Adb fresh = trySigned(keys);
+                if (fresh != null) return fresh;
+                if (System.currentTimeMillis() > deadline) throw new IOException("debugging permission wasn't accepted on the TV");
+            }
+        }
+    }
+
+    /** A new connection that authenticates by signature alone (no prompt); null if the TV doesn't know the key yet. */
+    private static Adb trySigned(KeyPair keys) {
+        Socket s = new Socket();
+        Adb adb = null;
+        try {
+            s.connect(new InetSocketAddress("127.0.0.1", 5555), 3000);
+            s.setSoTimeout(5000);
+            adb = new Adb(s);
+            adb.send(CNXN, VERSION, MAX_DATA, "host::\0".getBytes(StandardCharsets.US_ASCII));
+            Message m = adb.read();
+            if (m.command == AUTH && m.arg0 == AUTH_TOKEN) {
+                adb.send(AUTH, AUTH_SIGNATURE, 0, sign(keys.getPrivate(), m.data));
+                m = adb.read();
+            }
+            if (m.command == CNXN) {
+                s.setSoTimeout(20_000);
+                return adb;
+            }
+        } catch (IOException ignored) {
+        }
+        if (adb != null) adb.close(); else try { s.close(); } catch (IOException ignored) {}
+        return null;
     }
 
     /** Runs a command in the TV's shell and returns its output (stdout and stderr together). */
