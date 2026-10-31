@@ -2541,7 +2541,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             retarget(false);
             invalidateAll();
         }
-        if (cards.isEmpty() && !Recs.hasKey(getContext())) b = wallpaper();
+        int color = Prefs.bgColor(getContext());
+        if (color != bgColor) {
+            bgColor = color;
+            lightGradient = nightGradient = null;
+            sky.invalidate();
+        }
+        if (bgColor >= 0) b = null;     // solid color: the plain gradient, no photo to fetch, decode or draw
+        else if (cards.isEmpty() && !Recs.hasKey(getContext())) b = wallpaper();
         if (cards.isEmpty() || b != null) showBackdrop(b);
         heroDirty = true;
     }
@@ -2608,6 +2615,25 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      * Background: the first card's photo, heavily blurred and almost white; without it, a light gradient. At night, the
      * same photo almost black (or a dark gradient), drawn on top during the transition.
      */
+    /**
+     * Solid color backgrounds: a soft top-to-bottom shade of one hue, light by day and deep at night so the theme's
+     * text stays readable. {day top, day bottom, night top, night bottom}; the first is the default gradient.
+     */
+    static final int[][] BG_COLORS = {
+        {0xFFF5F5F7, 0xFFE2E2E7, 0xFF1C1C1E, 0xFF0B0B0D},     // graphite
+        {0xFFEEF3FA, 0xFFD8E2F1, 0xFF15202F, 0xFF070C15},     // blue
+        {0xFFEEF6F0, 0xFFD9E9DD, 0xFF13241A, 0xFF07110B},     // green
+        {0xFFF3EFFA, 0xFFE2DAF1, 0xFF1F1830, 0xFF0C0916},     // purple
+        {0xFFFAF4EB, 0xFFEEE2CF, 0xFF2A2116, 0xFF110C07},     // sand
+    };
+
+    static String[] bgColorNames() {
+        return new String[] {Ui.tr("Grafite", "Graphite"), Ui.tr("Azul", "Blue"), Ui.tr("Verde", "Green"),
+                Ui.tr("Roxo", "Purple"), Ui.tr("Areia", "Sand")};
+    }
+
+    private int bgColor = -1;
+
     private void drawLightSky(Canvas c) {
         long up = SystemClock.uptimeMillis();
         float e = bgFadeAt == 0 ? 1 : fadeEase(bgFadeAt, up);
@@ -2615,8 +2641,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Drawer open: the background lightens (by day) or darkens (at night), as a filter on the drawing itself.
         android.graphics.ColorFilter v = veil(tone(0.32f, 0.42f) * Ui.clamp(drawer.value), blend(0xFFFFFFFF, 0xFF000000, night));
         if (bgTo == null || (fading && bgFrom == null)) {
-            if (lightGradient == null) lightGradient = new LinearGradient(0, 0, 0, h, 0xFFF5F5F7, 0xFFE2E2E7, Shader.TileMode.CLAMP);
-            if (nightGradient == null) nightGradient = new LinearGradient(0, 0, 0, h, 0xFF1C1C1E, 0xFF0B0B0D, Shader.TileMode.CLAMP);
+            int[] shade = BG_COLORS[Math.max(0, Math.min(BG_COLORS.length - 1, bgColor))];
+            if (lightGradient == null) lightGradient = new LinearGradient(0, 0, 0, h, shade[0], shade[1], Shader.TileMode.CLAMP);
+            if (nightGradient == null) nightGradient = new LinearGradient(0, 0, 0, h, shade[2], shade[3], Shader.TileMode.CLAMP);
             fill.setColorFilter(v);
             if (night < 0.999f) {
                 fill.setShader(lightGradient);

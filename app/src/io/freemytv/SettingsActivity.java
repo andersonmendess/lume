@@ -610,7 +610,11 @@ public class SettingsActivity extends Activity {
             String line;
             String error = recs.optString("error");
             int count = recs.optInt("count");
-            if (!Prefs.recsOn(getContext())) line = Ui.tr("Desligadas · Papel de parede: ", "Off · Wallpaper: ") + Wallpapers.sourceName(getContext()) + ".";
+            if (!Prefs.recsOn(getContext())) {
+                String color = bgColorName();
+                line = color != null ? Ui.tr("Desligadas · Cor sólida: ", "Off · Solid color: ") + color + "."
+                        : Ui.tr("Desligadas · Papel de parede: ", "Off · Wallpaper: ") + Wallpapers.sourceName(getContext()) + ".";
+            }
             else if (!hasKey) line = Ui.tr("Sem chave do TMDB: coloque a sua em Recomendações.", "No TMDB key: add yours in Recommendations.");
             else if (!error.isEmpty()) line = Ui.tr("Erro: ", "Error: ") + error + ".";
             else if (count > 0) line = Ui.tr("Ligadas · " + count + " títulos em alta, trocando a cada 5 segundos.",
@@ -917,7 +921,7 @@ public class SettingsActivity extends Activity {
             if (screen == HOMESCR) {
                 String[][] t = {
                     {Ui.tr("Tema", "Theme"), Ui.tr("Claro, escuro ou automático (segue o pôr do sol).", "Light, dark or automatic (follows the sunset).")},
-                    {Ui.tr("Fundo", "Background"), Ui.tr("Recomendações mostra os filmes e séries em alta. Papel de parede deixa só a foto, o relógio e o clima.", "Recommendations shows what's trending. Wallpaper leaves just the photo, the clock and the weather.")},
+                    {Ui.tr("Fundo", "Background"), Ui.tr("Recomendações mostra os filmes e séries em alta. Papel de parede deixa só a foto, o relógio e o clima. Cor sólida é o mais leve: sem fotos para baixar.", "Recommendations shows what's trending. Wallpaper leaves just the photo, the clock and the weather. Solid color is the lightest: no photos to download.")},
                     {Prefs.recsOn(getContext()) ? Ui.tr("Recomendações", "Recommendations") : Ui.tr("Papel de parede", "Wallpaper"),
                             Prefs.recsOn(getContext()) ? Ui.tr("Chave do TMDB, categorias e o que o OK no card abre.", "TMDB key, genres and what OK on a card opens.")
                                     : Ui.tr("A fonte das imagens e qual aparece em cada modo.", "Where the images come from and which shows in each mode.")},
@@ -976,7 +980,14 @@ public class SettingsActivity extends Activity {
             }
             // With recommendations the home screen's background is the frosted photo; with a wallpaper, the photo itself.
             android.graphics.Bitmap pic = pick != null ? pick : recsOn ? blurBg : homeThumb;
-            if (pic != null) c.drawBitmap(pic, null, frame, p);
+            int previewColor = popup == BG_POPUP ? popupFocus - 2 : recsOn ? -1 : Prefs.bgColor(ctx);
+            if (previewColor >= 0 && previewColor < HomeView.BG_COLORS.length) {
+                int[] shade = HomeView.BG_COLORS[previewColor];
+                p.setShader(new android.graphics.LinearGradient(0, frame.top, 0, frame.bottom,
+                        dark ? shade[2] : shade[0], dark ? shade[3] : shade[1], android.graphics.Shader.TileMode.CLAMP));
+                c.drawRect(frame, p);
+                p.setShader(null);
+            } else if (pic != null) c.drawBitmap(pic, null, frame, p);
             else {
                 p.setColor(dark ? 0xFF1C1C1E : 0xFFE5E5EA);
                 c.drawRect(frame, p);
@@ -1608,21 +1619,33 @@ public class SettingsActivity extends Activity {
         // MARK: Home screen: theme, background (recommendations or wallpaper), weather, sounds, Live TV
 
         private String backgroundName() {
-            return Prefs.recsOn(getContext()) ? Ui.tr("Recomendações", "Recommendations") : Ui.tr("Papel de parede", "Wallpaper");
+            Context ctx = getContext();
+            if (Prefs.recsOn(ctx)) return Ui.tr("Recomendações", "Recommendations");
+            int color = Prefs.bgColor(ctx);
+            return color >= 0 ? Ui.tr("Cor sólida", "Solid color") : Ui.tr("Papel de parede", "Wallpaper");
+        }
+
+        /** The solid color's name, or null when the background is a photo. */
+        private String bgColorName() {
+            Context ctx = getContext();
+            int color = Prefs.recsOn(ctx) ? -1 : Prefs.bgColor(ctx);
+            String[] names = HomeView.bgColorNames();
+            return color >= 0 && color < names.length ? names[color] : null;
         }
 
         private void drawHomeScreen(Canvas c) {
             Context ctx = getContext();
             boolean recsOn = Prefs.recsOn(ctx);
+            String colorName = bgColorName();
             String[] labels = {Ui.tr("Tema", "Theme"), Ui.tr("Fundo", "Background"),
-                    recsOn ? Ui.tr("Recomendações", "Recommendations") : Ui.tr("Papel de parede", "Wallpaper"),
+                    recsOn ? Ui.tr("Recomendações", "Recommendations") : colorName != null ? Ui.tr("Cor", "Color") : Ui.tr("Papel de parede", "Wallpaper"),
                     Ui.tr("Ícones da barra", "Shelf icons"), Ui.tr("Tamanho da dock", "Dock size"),
                     Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Fundo no topo", "Top background"),
                     Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Fundo da dock", "Dock background"),
                     Ui.tr("Bordas do painel", "Panel outlines"),
                     Ui.tr("Previsão do tempo", "Weather"), Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("TV ao Vivo", "Live TV")};
             String[] values = {themes()[HomeView.theme(ctx)], backgroundName(),
-                    recsOn ? (hasKey ? Prefs.genreNames(ctx) : Ui.tr("Sem chave do TMDB", "No TMDB key")) : Wallpapers.sourceName(ctx),
+                    recsOn ? (hasKey ? Prefs.genreNames(ctx) : Ui.tr("Sem chave do TMDB", "No TMDB key")) : colorName != null ? colorName : Wallpapers.sourceName(ctx),
                     shelfArtNames()[Prefs.shelfArt(ctx) ? 1 : 0], dockSizeNames()[Prefs.dockSize(ctx)], "", "", "", "", "",
                     weatherName(), Prefs.sounds(ctx) ? Ui.tr("Sim", "On") : Ui.tr("Não", "Off"), liveName()};
             for (int i = 0; i < 13; i++) {
@@ -1980,7 +2003,14 @@ public class SettingsActivity extends Activity {
                 for (int i = 0; i < n; i++) out[i] = dockApps.get(i)[1];
                 return out;
             }
-            if (popup == BG_POPUP) return new String[] {Ui.tr("Recomendações", "Recommendations"), Ui.tr("Papel de parede", "Wallpaper")};
+            if (popup == BG_POPUP) {
+                String[] colors = HomeView.bgColorNames();
+                String[] out = new String[2 + colors.length];
+                out[0] = Ui.tr("Recomendações", "Recommendations");
+                out[1] = Ui.tr("Papel de parede", "Wallpaper");
+                for (int i = 0; i < colors.length; i++) out[2 + i] = Ui.tr("Cor sólida: ", "Solid color: ") + colors[i];
+                return out;
+            }
             if (popup == WX_POS_POPUP) return wxPosNames();
             if (popup == WP_PICK_POPUP || popup == WP_ROTATE_POPUP) {
                 List<String> names = wpNames();
@@ -2019,7 +2049,11 @@ public class SettingsActivity extends Activity {
             if (popup == ART_POPUP) return Prefs.shelfArt(getContext()) == (i == 1);
             if (popup == SIZE_POPUP) return Prefs.dockSize(getContext()) == i;
             if (popup == DOCK_POPUP) return HomeApps.shelfPackages(getContext()).contains(dockApps.get(i)[0]);
-            if (popup == BG_POPUP) return Prefs.recsOn(getContext()) == (i == 0);
+            if (popup == BG_POPUP) {
+                Context ctx = getContext();
+                if (Prefs.recsOn(ctx)) return i == 0;
+                return Prefs.bgColor(ctx) == i - 2;     // wallpaper is color -1, at i = 1
+            }
             if (popup == WX_POS_POPUP) return Prefs.weatherRight(getContext()) == (i == 1);
             if (popup == WP_ROTATE_POPUP) return !Prefs.wallpaperSkip(getContext()).contains(wpNames().get(i));
             return Prefs.genres(getContext()).contains(Prefs.GENRES[i][0]);
@@ -2297,7 +2331,7 @@ public class SettingsActivity extends Activity {
                             Prefs.setDockSize(c, popupFocus);
                             popup = NO_POPUP;
                         } else if (popup == BG_POPUP) {
-                            Prefs.set(c, "recs_on", popupFocus == 0);
+                            Prefs.setBackground(c, popupFocus == 0, popupFocus - 2);
                             popup = NO_POPUP;
                             if (popupFocus == 1 && Wallpapers.names(c).isEmpty()) syncWallpapers();
                         } else if (popup == WX_POS_POPUP) {
@@ -2416,6 +2450,8 @@ public class SettingsActivity extends Activity {
                 else if (focus == 2) {
                     if (Prefs.recsOn(c)) {
                         open(RECS, 0);
+                    } else if (bgColorName() != null) {
+                        openPopup(BG_POPUP);     // "Cor": pick another one in the same list
                     } else {
                         open(WALL, 0);
                         Wallpapers.checkGithub(c, false, () -> handler.post(this::invalidate));

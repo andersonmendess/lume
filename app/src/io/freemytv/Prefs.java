@@ -83,6 +83,16 @@ final class Prefs {
         return ui(c).getBoolean("recs_on", true);
     }
 
+    /** Solid color background (an index into HomeView.BG_COLORS), or -1 for the photo ones. The lightest on the GPU. */
+    static int bgColor(Context c) {
+        return ui(c).getInt("bg_color", -1);
+    }
+
+    /** Fundo: recommendations, wallpaper (color -1), or a solid color (recommendations off). */
+    static void setBackground(Context c, boolean recs, int color) {
+        ui(c).edit().putBoolean("recs_on", recs).putInt("bg_color", recs ? -1 : color).apply();
+    }
+
     /** Wallpaper slots: the home screen in the light theme, in the dark theme, and the screensaver. */
     static final int WP_LIGHT = 0, WP_DARK = 1, WP_SAVER = 2;
     private static final String[] WP_KEYS = {"wp_home", "wp_home_dark", "wp_saver"};
