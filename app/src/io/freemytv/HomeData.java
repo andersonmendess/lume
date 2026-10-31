@@ -24,15 +24,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Crypto prices (Binance, every 5 min) and weather/sunrise/sunset for your location (Open-Meteo, every 30 min), cached
- * so the screen opens with numbers. Only fetched while the home screen or the screensaver is visible (the screen asks).
- * Neither source needs a key. Location and currency come from config.properties.
+ * Weather/sunrise/sunset for your location (Open-Meteo, every 30 min), cached so the screen opens with numbers. Only
+ * fetched while the home screen or the screensaver is visible (the screen asks). No key needed; the fallback location
+ * comes from config.properties.
  */
 final class HomeData {
-    static final String[] COINS = {"BTC", "ETH", "SOL", "USDT"};
-    private static final String CURRENCY = Config.CURRENCY.trim().toUpperCase(Locale.ROOT);
-    /** Binance quotes dollars as USDT. */
-    private static final String QUOTE = CURRENCY.equals("USD") ? "USDT" : CURRENCY;
     /** Where the weather is for: the TV's own location, else the network's (IP), else config.properties. */
     private volatile String lat = Config.LATITUDE, lon = Config.LONGITUDE;
     volatile String city = Config.CITY.trim();
@@ -46,22 +42,10 @@ final class HomeData {
 
     private static final String WEATHER_QUERY = "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code"
             + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=4";
-    private static final long PRICES_EVERY = 5 * 60_000L, WEATHER_EVERY = 30 * 60_000L;
+    private static final long WEATHER_EVERY = 30 * 60_000L;
     private static final Locale PT = new Locale("pt", "BR");
 
     interface Listener { void onData(); }
-
-    /** BTC, ETH and SOL; in Brazilian reais also the dollar (USDT/BRL), which Binance doesn't list for most currencies. */
-    static int coinCount() {
-        if (!Config.SHOW_PRICES) return 0;
-        return CURRENCY.equals("BRL") ? COINS.length : 3;
-    }
-
-    private static String pricesUrl() {
-        StringBuilder symbols = new StringBuilder();
-        for (int i = 0; i < coinCount(); i++) symbols.append(i == 0 ? "" : ",").append("%22").append(COINS[i]).append(QUOTE).append("%22");
-        return "https://api.binance.com/api/v3/ticker/24hr?type=MINI&symbols=%5B" + symbols + "%5D";
-    }
 
     static final class Weather {
         double temp = Double.NaN, max = Double.NaN, min = Double.NaN;
@@ -90,17 +74,14 @@ final class HomeData {
         return instance;
     }
 
-    final double[] prices = {Double.NaN, Double.NaN, Double.NaN, Double.NaN};
-    /** 24 h change (%), in the same order. */
-    final double[] changes = {Double.NaN, Double.NaN, Double.NaN, Double.NaN};
-    volatile long pricesAt, weatherAt;
+    volatile long weatherAt;
     volatile Weather weather = new Weather();
 
     private final SharedPreferences cache;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new ArrayList<>();
-    private volatile boolean fetchingPrices, fetchingWeather;
+    private volatile boolean fetchingWeather;
 
     private HomeData(Context c) {
         context = c;
@@ -113,9 +94,6 @@ final class HomeData {
             locatedAt = cache.getLong("locatedAt", 0);
         }
         try {
-            String p = cache.getString("prices", null);
-            if (p != null && Config.SHOW_PRICES) parsePrices(p);
-            if (Config.SHOW_PRICES) pricesAt = cache.getLong("pricesAt", 0);
             String w = cache.getString("weather", null);
             if (w != null) weather = parseWeather(w);
             weatherAt = cache.getLong("weatherAt", 0);
@@ -129,22 +107,6 @@ final class HomeData {
     void refreshIfStale() {
         long now = System.currentTimeMillis();
         // A negative age (the TV's clock went back) counts as stale: otherwise the data would freeze.
-        if (Config.SHOW_PRICES && !fetchingPrices && (now - pricesAt > PRICES_EVERY || now < pricesAt)) {
-            fetchingPrices = true;
-            io.execute(() -> {
-                try {
-                    String body = get(pricesUrl());
-                    parsePrices(body);
-                    pricesAt = System.currentTimeMillis();
-                    cache.edit().putString("prices", body).putLong("pricesAt", pricesAt).apply();
-                    notifyListeners();
-                } catch (Exception e) {
-                    AppLog.w("prices: " + e.getMessage());
-                } finally {
-                    fetchingPrices = false;
-                }
-            });
-        }
         // Never located yet (or not for 6 hours): fetch now, so the forecast moves to where the TV is.
         boolean relocate = locatedAt == 0 || now - locatedAt > LOCATE_EVERY;
         if (!fetchingWeather && (relocate || now - weatherAt > WEATHER_EVERY || now < weatherAt)) {
@@ -243,25 +205,6 @@ final class HomeData {
         main.post(() -> { for (Listener l : new ArrayList<>(listeners)) l.onData(); });
     }
 
-    private void parsePrices(String body) throws Exception {
-        JSONArray list = new JSONArray(body);
-        String quote = QUOTE;
-        int found = 0;
-        for (int i = 0; i < list.length(); i++) {
-            JSONObject o = list.getJSONObject(i);
-            String symbol = o.getString("symbol");
-            for (int k = 0; k < COINS.length; k++) {
-                if (!symbol.equals(COINS[k] + quote)) continue;
-                found++;
-                double last = Double.parseDouble(o.optString("lastPrice", o.optString("price", "NaN")));
-                double open = Double.parseDouble(o.optString("openPrice", "NaN"));
-                prices[k] = last;
-                changes[k] = open > 0 ? (last - open) / open * 100 : Double.NaN;
-            }
-        }
-        if (found == 0) pricesAt = 0;   // cached in another currency (config changed): fetch again
-    }
-
     private static Weather parseWeather(String body) throws Exception {
         JSONObject o = new JSONObject(body);
         TimeZone zone = TimeZone.getTimeZone(o.optString("timezone", TimeZone.getDefault().getID()));
@@ -344,27 +287,6 @@ final class HomeData {
 
     // MARK: - Formatting
 
-    private static Locale locale() {
-        return Ui.en ? Locale.US : PT;
-    }
-
-    /** 580.4k · 21.0k · 1.04k · 5.61 (as short as possible; the dollar always with cents). */
-    static String price(double v) {
-        if (Double.isNaN(v)) return "—";
-        if (v >= 10_000) return String.format(locale(), "%.1fk", v / 1000);
-        if (v >= 1000) return String.format(locale(), "%.2fk", v / 1000);
-        return String.format(locale(), "%.2f", v);
-    }
-
-    /** 416.3k · 12.2k · 1.04k · 531 · 5.05: abbreviated, for the price row on the home screen. */
-    static String compact(double v) {
-        if (Double.isNaN(v)) return "—";
-        if (v >= 10_000) return String.format(locale(), "%.1fk", v / 1000);
-        if (v >= 1000) return String.format(locale(), "%.2fk", v / 1000);
-        if (v >= 100) return String.format(locale(), "%.0f", v);
-        return String.format(locale(), "%.2f", v);
-    }
-
     /** The weather in words, from Open-Meteo's WMO code. */
     static String condition(int code, boolean day) {
         if (code < 0) return "";
@@ -405,24 +327,8 @@ final class HomeData {
         return "US".equals(Locale.getDefault().getCountry());
     }
 
-    /** "+1.2%" / "−0.8%" (a real minus sign). */
-    static String change(double v) {
-        if (Double.isNaN(v)) return "";
-        return (v >= 0 ? "+" : "−") + String.format(locale(), "%.1f%%", Math.abs(v));
-    }
-
     static String hour(long at) {
         return Ui.en ? new SimpleDateFormat("h a", Locale.US).format(new java.util.Date(at))
                 : new SimpleDateFormat("HH'h'", PT).format(new java.util.Date(at));
-    }
-
-    /** How long ago the data was fetched, if it's stale (no internet): "12 min ago". */
-    static String staleness(long at, long every) {
-        if (at == 0) return "";
-        long age = System.currentTimeMillis() - at;
-        if (age < every * 2) return "";
-        long minutes = age / 60_000;
-        if (Ui.en) return minutes < 60 ? minutes + " min ago" : (minutes / 60) + " h ago";
-        return minutes < 60 ? "há " + minutes + " min" : "há " + (minutes / 60) + " h";
     }
 }

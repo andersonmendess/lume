@@ -43,14 +43,13 @@ import java.util.concurrent.Executors;
 /**
  * The home screen, styled after the Apple TV app with the macOS 27 glass:
  *  - at the top left, the "For You" title and the tabs (Explore, Movies, Shows); at the top right, icon-only glass
- *    buttons (Live TV, network, Settings) after a clock pill, with the focused one's name below it, and the small crypto quotes
- *    (logo + price) at the right end of the tab row;
+ *    buttons (Live TV, network, Settings) after a clock pill, with the focused one's name below it;
  *  - three cards with the titles recommended for right now in the selected tab (Recs, from TMDB); the background is
  *    the first card's photo, heavily blurred and almost white (Backdrop); without one, a light gradient;
  *  - at the bottom, the glass shelf with the apps (icons in each brand's color, like the tvOS Dock; the focused one
  *    grows);
- *  - ↓ on the shelf: everything moves up and the bottom drawer appears (inputs, shortcuts, weather for the next hours
- *    and quotes with the 24 h change); the background lightens (darkens at night). ↑ or Back closes it;
+ *  - ↓ on the shelf: everything moves up and the bottom drawer appears (inputs, shortcuts, weather for the next
+ *    hours); the background lightens (darkens at night). ↑ or Back closes it;
  *  - from sunset to sunrise, a night look: dark background, smoked glass and white text.
  * Measurements are in a 1920×1080 space (k = width / 1920). The screen is split into layers so the TV's weak GPU only
  * redraws what changed.
@@ -87,7 +86,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final float L_TITLE_BASE = 130, L_TABBAR_TOP = 158, L_TABBAR_H = 68, L_CARDS_TOP = 262, L_CARD_H = 442;
     private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
-    private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
+    private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73;
     private static final String[] TABS = {"Em alta", "Filmes", "Séries"};
     private static final String[] TABS_EN = {"Trending", "Movies", "Shows"};
     private static final String[] TAB_KIND = {null, "movie", "tv"};
@@ -122,7 +121,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring[] cardFocus = new Spring[3];
     private final RectF[] cardRects = new RectF[3];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
-    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lWx;
+    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lTip, lWx;
     private Shader lightGradient;
 
     // Shelf
@@ -202,7 +201,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private long clockMinute = -1;
     private boolean okDown, backDown;
 
-    private Paint labelPaint, metaPaint, clockPaint, capsuleText, staleQuote;
+    private Paint labelPaint, metaPaint, clockPaint, capsuleText;
     private Paint rowTitle, sheetTitle;
     private TextPaint titlePaint, gridLabel, toastPaint;
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -498,7 +497,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     @Override public void onData() {
-        quoteValues = null;     // new prices: format them again
         updatePalette();
         checkNight(true);
         layoutStatus();
@@ -596,7 +594,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lCardTitle = Ui.text(Ui.semibold, 31 * k, L_INK);
         lCardTitle.setLetterSpacing(0.012f);
         lCardMeta = Ui.text(Ui.medium, 25 * k, L_DIM);
-        lQuote = Ui.numbers(Ui.regular, 21 * k, L_FAINT);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
         lWx = Ui.text(Ui.semibold, 28 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
@@ -604,9 +601,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lPill.setTextAlign(Paint.Align.CENTER);
         lightGradient = null;
         capsuleText = Ui.numbers(Ui.medium, 29 * k, 0xF2FFFFFF);
-        // Quotes: a subtle detail, smaller and dimmer than the rest.
-        staleQuote = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
-        staleQuote.setTextAlign(Paint.Align.RIGHT);
         rowTitle = Ui.text(Ui.semibold, 25 * k, 0xB3FFFFFF);
         sheetTitle = Ui.text(Ui.displaySemibold, 40 * k, 0xFFFFFFFF);
         sheetTitle.setTextAlign(Paint.Align.CENTER);
@@ -1020,9 +1014,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lTabOn.setColor(tone(L_INK, WHITE));
         lCardTitle.setColor(tone(L_INK, WHITE));
         lCardMeta.setColor(tone(L_DIM, 0xFF98989D));
-        lQuote.setColor(tone(L_FAINT, 0xB8FFFFFF));
         lTip.setColor(tone(L_INK, WHITE));
-        staleQuote.setColor(tone(L_FAINT, 0x99FFFFFF));
     }
 
     private boolean tickBackgroundFade(long up) {
@@ -1167,7 +1159,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         statusDirty = true;
     }
 
-    // MARK: - Quotes and shelf
+    // MARK: - Shelf
 
     private void setShelf(List<HomeApps.Item> list) {
         boolean same = list.size() == shelf.size();
@@ -1229,56 +1221,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawShadow(c, tmp, radius, 26 * k, shadow.getColor());
         // White glass by day; smoked glass at night.
         glass(c, platterRect, radius, 1, true, outline);
-    }
-
-    private String[] quoteValues;
-    private float[] quoteGlyphs, quoteWidths;
-    private long quotesAt;
-    private float quotesCap;
-
-    /** Coin logo + price in the configured currency, in a row at the right end of the tab bar. */
-    private void drawQuotes(Canvas c) {
-        if (HomeData.coinCount() == 0) return;
-        float right = platterRect.isEmpty() ? CONTENT_R * k : platterRect.right - SHELF_PAD * k * dockScale;
-        applyTone();
-        Paint text = lQuote;
-        // The corner buttons' names appear in this row: the quotes fade out while one of them has focus.
-        float fade = 1;
-        for (int i = 3; i < 6; i++) fade = Math.min(fade, 1 - Ui.clamp(topFocus[i].value));
-        if (fade <= 0.01f) return;
-        int textColor = text.getColor();
-        text.setColor(Ui.alpha(textColor, fade));
-        // On the tab row, at the right.
-        float base = (L_TABBAR_TOP + L_TABBAR_H / 2) * k + Ui.halfCap(text);
-        float cap = Ui.cap(text), gap = 6 * k, spacing = 24 * k;
-        int n = HomeData.coinCount();
-        // Formatted and measured only when the prices or the text size change: String.format on every frame of the
-        // hero layer was ~3 ms of its ~4 ms on the Mi TV Stick.
-        if (quoteValues == null || quoteValues.length != n || quotesAt != data.pricesAt || quotesCap != cap) {
-            quoteValues = new String[n];
-            quoteGlyphs = new float[n];
-            quoteWidths = new float[n];
-            for (int i = 0; i < n; i++) {
-                quoteValues[i] = HomeData.compact(data.prices[i]);
-                quoteGlyphs[i] = Glyphs.width(getContext(), HomeData.COINS[i], cap);
-                quoteWidths[i] = text.measureText(quoteValues[i]);
-            }
-            quotesAt = data.pricesAt;
-            quotesCap = cap;
-        }
-        float total = spacing * (n - 1);
-        for (int i = 0; i < n; i++) total += quoteGlyphs[i] + gap + quoteWidths[i];
-        float x = right - total;
-        for (int i = 0; i < n; i++) {
-            Glyphs.coin(getContext(), c, HomeData.COINS[i], x + quoteGlyphs[i] / 2, base - cap / 2, cap,
-                    Ui.alpha(tone(0xB38E8E93, 0x8CFFFFFF), fade));
-            x += quoteGlyphs[i] + gap;
-            c.drawText(quoteValues[i], x, base, text);
-            x += quoteWidths[i] + spacing;
-        }
-        text.setColor(textColor);
-        String stale = HomeData.staleness(data.pricesAt, 5 * 60_000L);
-        if (!stale.isEmpty()) c.drawText(stale, right - total - 24 * k, base, staleQuote);
     }
 
     private void drawTiles(Canvas c) {
@@ -2722,14 +2664,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void drawLightTop(Canvas c) {
         applyTone();
-        if (!recsOff) {     // without recommendations, no title: just the wallpaper, the weather and the buttons
-            String hello = Ui.tr("Para você", "For You");
-            c.drawText(hello, MARGIN * k - Ui.leftBearing(lTitle, hello), L_TITLE_BASE * k, lTitle);
-        }
-        if (recsOff) {
-            drawQuotes(c);
-            return;
-        }
+        if (recsOff) return;     // without recommendations, no title: just the wallpaper, the weather and the buttons
+        String hello = Ui.tr("Para você", "For You");
+        c.drawText(hello, MARGIN * k - Ui.leftBearing(lTitle, hello), L_TITLE_BASE * k, lTitle);
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
         // the white pill with a shadow and grows a little (the tvOS focus).
         float focus = Ui.clamp(topFocus[tab].value);
@@ -2752,7 +2689,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < 3; i++) if (cardFocus[i].value > 0.02f && (top < 0 || cardFocus[i].value > cardFocus[top].value)) top = i;
         for (int i = 0; i < 3; i++) if (i != top) drawLightCard(c, i);
         if (top >= 0) drawLightCard(c, top);
-        drawQuotes(c);
     }
 
     /**

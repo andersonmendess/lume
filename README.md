@@ -11,7 +11,7 @@ Open source. Built with Claude Code. One button to undo.
 
 [**freemytv.io**](https://freemytv.io) · [Install](#install) · [Any TV](#any-tv) · [Make it yours](#make-it-yours)
 
-<img src=".github/preview.webp" width="880" alt="The Lume home screen: a glass shelf of apps, trending picks, and a drawer with the weather and crypto prices">
+<img src=".github/preview.webp" width="880" alt="The Lume home screen: a glass shelf of apps, trending picks, and a drawer with the weather">
 
 </div>
 
@@ -27,7 +27,7 @@ Adaptada e testada numa TCL Google TV com **Android 12**, com tudo configurável
 - **Previsão do tempo** no topo, pela localização da internet ou por uma cidade digitada; pode ser desligada.
 - **TV ao Vivo** abre a TV a cabo no HDMI (ou a antena), ou o app que você escolher.
 - **Tela de descanso** com os mesmos títulos dos cards e tempo de espera ajustável (1 min a 1 h).
-- **Chave do TMDB digitada na TV**, para um APK servir em qualquer TV; **sons de navegação** opcionais; cotações de cripto opcionais (`show_prices`).
+- **Chave do TMDB digitada na TV**, para um APK servir em qualquer TV; **sons de navegação** opcionais.
 - **Atualização pelo GitHub (OTA):** *Ajustes do Início → Atualizações* procura a release mais nova, baixa o APK e chama o instalador do Android.
 - Correções para Android 12: tela de descanso que fechava sozinha, troca da tela inicial, sintonizador certo na TV ao Vivo, e animações sem travar (sombras pré-desenhadas).
 
@@ -38,7 +38,7 @@ Adaptada e testada numa TCL Google TV com **Android 12**, com tudo configurável
 - **No ads.** No sponsored rows, banners or autoplaying promos. Not one.
 - **Your apps, front and center.** The streaming apps you actually use, on a glass shelf.
 - **Trending, not sponsored.** Three fresh picks every hour from what's trending this week and the latest releases, only from apps you already have. Movies and Shows get their own tabs.
-- **Weather and markets, one press away.** The hour-by-hour forecast, sunrise and sunset, and live crypto prices.
+- **Weather, one press away.** The hour-by-hour forecast, sunrise and sunset.
 - **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
 - **A screensaver to match.** Full-screen photos of the picks with a big glass clock.
 - **Fast.** 60 fps, every frame in 16.6 ms, on the TV's own chip. The home screen uses 96 MB of memory instead of 242 MB (−60%).<br><sub>Measured on a 98″ TCL Google TV running Android 14.</sub>
@@ -93,7 +93,6 @@ Everything lives in `config.properties`, created by the first build:
 | `latitude`, `longitude` | Your city, for the weather and the sunset | New York |
 | `city` | The name on the weather card | `Weather` |
 | `language` | `auto` (follows the TV), `en` or `pt` | `auto` |
-| `currency` | Crypto prices in `USD`, `EUR`, `BRL`… | `USD` |
 | `temperature` | `C`, `F` or `auto` | `auto` |
 | `disable_assistant` | Also turn off Google Assistant | `false` |
 
@@ -141,7 +140,6 @@ Lume runs on Google TV and Android TV: TCL, Sony, Hisense, Philips, Xiaomi and m
 It's your code, and Claude Code finds its way around it. Try:
 
 - *"Add Crunchyroll to the shelf."*
-- *"Show the prices in euros."*
 - *"Add Spanish."*
 - *"Switch to the night look an hour after sunset."*
 
@@ -151,7 +149,7 @@ It's your code, and Claude Code finds its way around it. Try:
 - **It uses the TV's own ADB, from inside the TV.** The app connects to `127.0.0.1:5555` with its own key (that's the *Allow USB debugging?* prompt) and runs the same commands you would: `cmd package set-home-activity`, `settings put secure screensaver_components`, `pm disable-user`. Nothing listens to the network.
 - **Drawn by hand on one Canvas**, with Android 13 shaders for the frosted glass and the sky (plain fills on Android 12).
 - **A safety net.** A watchdog in a separate process brings back the stock home screen after three crashes in five minutes, and a boot check keeps your choice after TV updates.
-- **Data** from TMDB (trending titles, new releases and which app streams what in your country), Open-Meteo (forecast, sunrise and sunset) and Binance (24-hour prices).
+- **Data** from TMDB (trending titles, new releases and which app streams what in your country) and Open-Meteo (forecast, sunrise and sunset).
 
 | File | What it is |
 |---|---|
@@ -159,7 +157,7 @@ It's your code, and Claude Code finds its way around it. Try:
 | [`HomeMode.java`](app/src/io/freemytv/HomeMode.java) | Switching between Lume and Original |
 | [`Adb.java`](app/src/io/freemytv/Adb.java) | The TV's own ADB, from inside the TV |
 | [`Recs.java`](app/src/io/freemytv/Recs.java) | The picks (TMDB) |
-| [`HomeData.java`](app/src/io/freemytv/HomeData.java) | Weather and prices |
+| [`HomeData.java`](app/src/io/freemytv/HomeData.java) | Weather |
 | [`HomeApps.java`](app/src/io/freemytv/HomeApps.java) | The shelf, inputs and All Apps |
 | [`DreamView.java`](app/src/io/freemytv/DreamView.java) | The screensaver |
 | [`SettingsActivity.java`](app/src/io/freemytv/SettingsActivity.java) | The settings screen (the app's icon) |
@@ -169,14 +167,14 @@ The website ([freemytv.io](https://freemytv.io)) is in [`docs/`](docs): plain HT
 
 ## Privacy
 
-No accounts, no analytics, no tracking. The app only talks to TMDB, Open-Meteo (with the coordinates you set) and Binance. Your settings stay on your computer and your TV.
+No accounts, no analytics, no tracking. The app only talks to TMDB and Open-Meteo (with the coordinates you set). Your settings stay on your computer and your TV.
 
 ## Credits
 
 - Built with [Claude Code](https://claude.com/claude-code).
 - This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org/).
-- Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Prices from the [Binance](https://www.binance.com/) public API.
-- Icons: [Material Symbols](https://fonts.google.com/icons) (Apache 2.0). Font: [Inter](https://rsms.me/inter/) (SIL OFL 1.1). Coin logos: [cryptocurrency-icons](https://github.com/spothq/cryptocurrency-icons) (CC0).
+- Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
+- Icons: [Material Symbols](https://fonts.google.com/icons) (Apache 2.0). Font: [Inter](https://rsms.me/inter/) (SIL OFL 1.1).
 - Not affiliated with Google, TCL or any streaming service. App names and logos belong to their owners.
 
 ## License
