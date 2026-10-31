@@ -145,6 +145,12 @@ final class Adb implements Closeable {
         }
     }
 
+    /** Connects only if the TV already allows the app's key: never shows the prompt (for the home screen's widget). */
+    static Adb connectQuiet(Context c) throws IOException {
+        if (HomeButton.fireTv()) return null;
+        return trySigned(keys(c));
+    }
+
     /** A new connection that authenticates by signature alone (no prompt); null if the TV doesn't know the key yet. */
     private static Adb trySigned(KeyPair keys) {
         Socket s = new Socket();

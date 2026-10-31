@@ -138,6 +138,11 @@ final class Prefs {
         return ui(c).getBoolean("shelf_art", false);
     }
 
+    /** The device health widget under the clock (memory, background apps, "free memory"). */
+    static boolean health(Context c) {
+        return ui(c).getBoolean("health", true);
+    }
+
     /** Navigation sounds (the soft clicks on the home screen and in Settings). */
     static boolean sounds(Context c) {
         return ui(c).getBoolean("sounds", true);

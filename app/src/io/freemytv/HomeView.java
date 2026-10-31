@@ -54,7 +54,7 @@ import java.util.concurrent.Executors;
  * Measurements are in a 1920×1080 space (k = width / 1920). The screen is split into layers so the TV's weak GPU only
  * redraws what changed.
  */
-final class HomeView extends ViewGroup implements Choreographer.FrameCallback, Recs.Listener {
+final class HomeView extends ViewGroup implements Choreographer.FrameCallback, Recs.Listener, Health.Listener {
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
@@ -66,6 +66,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     // them with 40 of padding (the focused icon grows 20% without touching its edge).
     private static final float SHELF_PAD = 40, TILE_GAP = 48;
     private static final float BIG_CLOCK = 200, BIG_DATE = 38;     // the home screen's clock and date
+    private static final float HEALTH_LIFT = 150;     // how far the clock rises to make room for the health widget
     private static final float TILE_RADIUS = 22, TILE_MAX_W = 270;
     // Tile focus (Apple TV style): it grows from the center and its shadow drops (it "rises" toward the viewer).
     private static final float FOCUS_GROW = 0.2f;
@@ -270,6 +271,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!running) return;
+            if (healthOn) health.refresh(false);
             checkNotices();
             updatePalette();
             checkNight(true);
@@ -283,6 +285,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         super(a);
         activity = a;
         recs = Recs.get(a);
+        health = new Health(a, this);
         click = new Click(a);
         ui = a.getSharedPreferences("home-ui", Context.MODE_PRIVATE);
         tvInputs = (TvInputManager) a.getSystemService(Context.TV_INPUT_SERVICE);
@@ -329,6 +332,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         lastNanos = 0;
         lastStep = 0;
         recs.addListener(this);
+        healthOn = Prefs.health(getContext());
+        if (healthOn) health.refresh(true);
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         handler.postDelayed(tick, 15_000);
         checkNotices();
@@ -361,6 +366,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
 
     void destroy() {
         pause();
+        health.shutdown();
         click.release();
     }
 
@@ -2106,22 +2112,28 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
                     if (next == shelfIndex) return;
                     shelfIndex = next;
                 } else if (dy < 0) {
-                    if (lightButtons.isEmpty()) return;
-                    zone = Z_TOP;
-                    topIndex = 3 + lightButtons.size() - 1;     // the gear
+                    // Up from the dock's left half: the health button; from the right half: the gear.
+                    if (healthOn && !healthButton.isEmpty() && tileRects[shelfIndex].centerX() - shelfScroll.value < w / 2f) {
+                        zone = Z_HERO;
+                    } else {
+                        if (lightButtons.isEmpty()) return;
+                        zone = Z_TOP;
+                        topIndex = 3 + lightButtons.size() - 1;     // the gear
+                    }
                 } else {
                     return;
                 }
                 break;
-            case Z_HERO:
-                if (dx != 0) {
-                    if (!browse(dx)) return;
-                } else if (dy < 0) {
-                    if (statusItems.isEmpty()) return;
-                    zone = Z_STATUS;
-                    statusIndex = 0;
+            case Z_HERO:     // "Free memory": → or ↑ to the top buttons, ↓ to the dock
+                if (dx < 0) return;
+                if (dx > 0 || dy < 0) {
+                    if (lightButtons.isEmpty()) return;
+                    zone = Z_TOP;
+                    topIndex = 3;
                 } else {
+                    if (shelf.isEmpty()) return;
                     zone = Z_SHELF;
+                    shelfIndex = nearest(tileRects, healthButton.centerX());
                 }
                 break;
             case Z_STATUS:
@@ -2209,11 +2221,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
             it = others.get(gridIndex);
             r = focusedCell;
         } else if (zone == Z_HERO) {
-            Recs.Pick p = currentPick();
-            if (p == null || p.pkg == null) return;
-            it = HomeApps.app(p.pkg, Recs.serviceName(p));
-            if (p.video != null) it.uri = "https://www.youtube.com/watch?v=" + p.video;
-            r = heroButton;
+            click.open();
+            freeMemory();
+            return;
         } else if (zone == Z_STATUS) {
             if (statusItems.isEmpty()) return;
             it = statusItems.get(statusIndex);
@@ -2580,9 +2590,104 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
         String date = Ui.date(System.currentTimeMillis());
         if (!date.isEmpty()) date = Character.toUpperCase(date.charAt(0)) + date.substring(1);
         float cap = Ui.cap(bigClock), x = MARGIN * k;
-        float base = (L_PLATTER_TOP * k) / 2 + cap / 2;     // centered in the room above the dock
+        // Centered in the room above the dock; with the health widget under it, the whole block rises.
+        float base = (L_PLATTER_TOP * k) / 2 + cap / 2 - (healthOn ? HEALTH_LIFT * k : 0);
         c.drawText(clockText, x - Ui.leftBearing(bigClock, clockText), base, bigClock);
         c.drawText(date, x - Ui.leftBearing(bigDate, date), base + 84 * k, bigDate);
+        if (healthOn) drawHealth(c, x, base + 84 * k);
+    }
+
+    // MARK: - Device health (under the date): memory, background apps and "free memory"
+
+    private final Health health;
+    private boolean healthOn, freeing;
+    private String healthMemory = "", healthApps = "";
+    private float healthUsed;     // 0..1
+    private boolean healthHot;
+    private final RectF healthButton = new RectF();
+    private Paint healthText, healthLabel;
+
+    @Override public void onHealth() {
+        long total = health.totalMb, avail = health.availMb;
+        if (total <= 0) return;
+        healthUsed = Ui.clamp(1 - (float) avail / total);
+        int pct = Math.round(healthUsed * 100);
+        healthMemory = Ui.tr("Memória " + pct + "% · " + avail + " MB livres", "Memory " + pct + "% · " + avail + " MB free");
+        int n = health.backgroundApps;
+        healthApps = n < 0 ? "" : n == 0 ? Ui.tr("Nenhum app em segundo plano", "No apps in the background")
+                : n == 1 ? Ui.tr("1 app em segundo plano", "1 app in the background")
+                : Ui.tr(n + " apps em segundo plano", n + " apps in the background");
+        float t = health.cpuTemp;
+        String temp = Float.isNaN(t) ? "" : Math.round(t) + " °C";
+        healthApps = healthApps.isEmpty() ? temp : temp.isEmpty() ? healthApps : healthApps + " · " + temp;
+        // Close to where the chip slows itself down (95 °C on the Mi TV Stick): the line turns amber.
+        float limit = Float.isNaN(health.throttleTemp) ? 95 : health.throttleTemp;
+        healthHot = !Float.isNaN(t) && t >= limit - 15;
+        heroDirty = true;
+        wake();
+    }
+
+    /** A thin memory bar, the numbers, and the button (focusable: ↑ from the dock's left half, or ← from the top). */
+    private void drawHealth(Canvas c, float x, float dateBase) {
+        if (healthMemory.isEmpty()) return;
+        if (healthText == null || healthText.getTextSize() != 26 * k) {
+            healthText = Ui.text(Ui.medium, 26 * k, L_DIM);
+            healthLabel = Ui.text(Ui.semibold, 24 * k, L_INK);
+            healthLabel.setTextAlign(Paint.Align.CENTER);
+        }
+        int dim = tone(L_DIM, 0xB3FFFFFF);
+        float barW = 440 * k, barH = 6 * k, y = dateBase + 58 * k;
+        fill.setShader(null);
+        fill.setColor(tone(0x1F000000, 0x2EFFFFFF));
+        tmp.set(x, y, x + barW, y + barH);
+        c.drawRoundRect(tmp, barH / 2, barH / 2, fill);
+        // Calm while there's room; amber, then red, when memory runs short.
+        fill.setColor(healthUsed > 0.92f ? 0xFFFF453A : healthUsed > 0.85f ? 0xFFFF9F0A : tone(0xFF6E6E73, 0xD9FFFFFF));
+        tmp.set(x, y, x + barW * Math.max(0.02f, healthUsed), y + barH);
+        c.drawRoundRect(tmp, barH / 2, barH / 2, fill);
+        healthText.setColor(dim);
+        float line = y + barH + 44 * k;
+        c.drawText(healthMemory, x, line, healthText);
+        if (!healthApps.isEmpty()) {
+            line += 40 * k;
+            healthText.setColor(healthHot ? 0xFFFF9F0A : dim);
+            c.drawText(healthApps, x, line, healthText);
+        }
+        // The button: glass like the top buttons; focused, white with dark text and a little larger.
+        String label = freeing ? Ui.tr("Liberando…", "Freeing…") : Ui.tr("Liberar memória", "Free memory");
+        float f = Ui.clamp(heroFocus.value), s = 1 + 0.06f * f;
+        float bw = healthLabel.measureText(label) + 56 * k, bh = 56 * k, top = line + 30 * k;
+        healthButton.set(x, top, x + bw, top + bh);
+        float cx = healthButton.centerX(), cy = healthButton.centerY();
+        cell.set(cx - bw * s / 2, cy - bh * s / 2, cx + bw * s / 2, cy + bh * s / 2);
+        if (f > 0.01f) {
+            tmp.set(cell);
+            tmp.offset(0, 8 * k * f);
+            drawShadow(c, tmp, cell.height() / 2, 22 * k, Ui.alpha(0xFF000000, tone(0.18f, 0.4f) * f));
+        }
+        liquidGlass(c, cell, cell.height() / 2, 1 - f);
+        if (f > 0.01f) {
+            fill.setColor(Ui.alpha(0xFFFFFFFF, f));
+            c.drawRoundRect(cell, cell.height() / 2, cell.height() / 2, fill);
+        }
+        healthLabel.setColor(blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
+        healthLabel.setTextSize(24 * k * s);
+        c.drawText(label, cx, cy + Ui.halfCap(healthLabel), healthLabel);
+        healthLabel.setTextSize(24 * k);
+    }
+
+    private void freeMemory() {
+        if (freeing) return;
+        freeing = true;
+        heroDirty = true;
+        wake();
+        health.free(mb -> {
+            freeing = false;
+            heroDirty = true;
+            showToast(mb < 0 ? Ui.tr("Não deu para liberar: o Lume precisa da depuração permitida.", "Couldn't free memory: Lume needs debugging allowed.")
+                    : mb > 0 ? Ui.tr(mb + " MB liberados.", mb + " MB freed.")
+                    : Ui.tr("A memória já estava livre.", "Memory was already free."));
+        });
     }
 
     private void drawLightTop(Canvas c) {
@@ -2785,7 +2890,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, R
                     List<Integer> order = new ArrayList<>();
                     if (!recsOff) for (int i = 0; i < 3; i++) order.add(i);
                     for (int i = 0; i < lightButtons.size(); i++) order.add(3 + i);
-                    int at = order.indexOf(topIndex), to = Math.max(0, Math.min(order.size() - 1, at + dx));
+                    int at = order.indexOf(topIndex);
+                    if (at + dx < 0 && healthOn && !healthButton.isEmpty()) {     // ← past the first: the health button
+                        zone = Z_HERO;
+                        break;
+                    }
+                    int to = Math.max(0, Math.min(order.size() - 1, at + dx));
                     int next = order.get(to);
                     if (next == topIndex) return true;
                     topIndex = next;

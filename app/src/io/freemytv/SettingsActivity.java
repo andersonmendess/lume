@@ -227,7 +227,7 @@ public class SettingsActivity extends Activity {
         private final Scene scene = new Scene();
         private Click click;
         private final Handler handler = new Handler(Looper.getMainLooper());
-        private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 10)
+        private final Spring[] pop = new Spring[16];     // one per row: room for the longest list (Tela inicial has 11)
         private final RectF tmp = new RectF(), rowRect = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
         private String busyText = "";
@@ -387,7 +387,7 @@ public class SettingsActivity extends Activity {
 
         private int rowCount() {
             return screen == MAIN ? MAIN_ROWS : screen == RECS ? 5 : screen == THEME ? 3 : screen == WALL ? 4
-                    : screen == UPDATE ? updateRows() : screen == HOMESCR ? 10 : screen == SAVER ? 3 : 2;
+                    : screen == UPDATE ? updateRows() : screen == HOMESCR ? 11 : screen == SAVER ? 3 : 2;
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -527,8 +527,8 @@ public class SettingsActivity extends Activity {
 
         private static final String[] MAIN_ICONS = {"home", "tv", "bedtime", "sync"};
         private static final int[] MAIN_COLORS = {0xFF5E5CE6, 0xFF0A84FF, 0xFFBF5AF2, 0xFF30D158};
-        private static final String[] HOME_ICONS = {"clear_night", "sparkles", "apps", "tv", "home", "sparkles", "sparkles", "sparkles", "home", "speaker"};
-        private static final int[] HOME_COLORS = {0xFF636366, 0xFFFF9F0A, 0xFF0A84FF, 0xFF30D158, 0xFFBF5AF2, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF5E5CE6, 0xFFFF375F};
+        private static final String[] HOME_ICONS = {"clear_night", "sparkles", "apps", "tv", "home", "sparkles", "sparkles", "sparkles", "home", "check", "speaker"};
+        private static final int[] HOME_COLORS = {0xFF636366, 0xFFFF9F0A, 0xFF0A84FF, 0xFF30D158, 0xFFBF5AF2, 0xFF8E8E93, 0xFF5E5CE6, 0xFF8E8E93, 0xFF5E5CE6, 0xFF30D158, 0xFFFF375F};
 
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
@@ -899,6 +899,7 @@ public class SettingsActivity extends Activity {
                     {Ui.tr("Fundo no topo", "Top background"), Ui.tr("O fundo de vidro dos botões do topo. Desligado, ficam só os ícones.", "The glass behind the top buttons. Off, just the icons.")},
                     {Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Uma borda fina em volta da dock, com ou sem o fundo.", "A thin outline around the dock, with or without its background.")},
                     {Ui.tr("Fundo da dock", "Dock background"), Ui.tr("A barra de vidro atrás dos apps. Desligado, ficam só os ícones.", "The glass bar behind the apps. Off, just the icons.")},
+                    {Ui.tr("Saúde do aparelho", "Device health"), Ui.tr("Sob o relógio: a memória em uso, os apps em segundo plano e um botão para liberar memória.", "Under the clock: memory in use, apps in the background and a button to free memory.")},
                     {Ui.tr("Sons ao navegar", "Navigation sounds"), Ui.tr("Os cliques suaves ao mover o foco.", "The soft clicks when moving the focus.")}};
                 return t[Math.min(focus, t.length - 1)];
             }
@@ -1493,17 +1494,18 @@ public class SettingsActivity extends Activity {
                     Ui.tr("Ícones da barra", "Shelf icons"), Ui.tr("Tamanho da dock", "Dock size"),
                     Ui.tr("Bordas no topo", "Top outlines"), Ui.tr("Fundo no topo", "Top background"),
                     Ui.tr("Bordas da dock", "Dock outline"), Ui.tr("Fundo da dock", "Dock background"),
-                    Ui.tr("Sons ao navegar", "Navigation sounds")};
+                    Ui.tr("Saúde do aparelho", "Device health"), Ui.tr("Sons ao navegar", "Navigation sounds")};
             String[] values = {themes()[HomeView.theme(ctx)], backgroundName(),
                     colorName != null ? colorName : Wallpapers.sourceName(ctx),
-                    shelfArtNames()[Prefs.shelfArt(ctx) ? 1 : 0], dockSizeNames()[Prefs.dockSize(ctx)], "", "", "", "", ""};
-            for (int i = 0; i < 10; i++) {
+                    shelfArtNames()[Prefs.shelfArt(ctx) ? 1 : 0], dockSizeNames()[Prefs.dockSize(ctx)], "", "", "", "", "", ""};
+            for (int i = 0; i < 11; i++) {
                 layoutRow(i);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(fg(0xF2FFFFFF), INK, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowIcon(c, HOME_ICONS[i], HOME_COLORS[i]), base, rowLabel);
-                if (i == 9) rowToggle(c, Prefs.sounds(ctx));
+                if (i == 10) rowToggle(c, Prefs.sounds(ctx));
+                else if (i == 9) rowToggle(c, Prefs.health(ctx));
                 else if (i == 5) rowToggle(c, Prefs.topBorders(ctx));
                 else if (i == 6) rowToggle(c, Prefs.topBackground(ctx));
                 else if (i == 7) rowToggle(c, Prefs.dockBorders(ctx));
@@ -2236,7 +2238,8 @@ public class SettingsActivity extends Activity {
                     }
                 } else if (focus == 3) openPopup(ART_POPUP);
                 else if (focus == 4) openPopup(SIZE_POPUP);
-                else if (focus == 9) openYesNo("sounds", Ui.tr("Sons ao navegar", "Navigation sounds"));
+                else if (focus == 10) openYesNo("sounds", Ui.tr("Sons ao navegar", "Navigation sounds"));
+                else if (focus == 9) Prefs.set(c, "health", !Prefs.health(c));
                 // Toggles: flip in place.
                 else if (focus == 5) Prefs.set(c, "border_top", !Prefs.topBorders(c));
                 else if (focus == 6) Prefs.set(c, "bg_top", !Prefs.topBackground(c));
