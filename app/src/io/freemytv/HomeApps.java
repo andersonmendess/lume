@@ -1042,9 +1042,11 @@ final class HomeApps {
         Bitmap b = Bitmap.createBitmap(TILE_W, TILE_H, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(b);
         canvas.drawColor(0xFF15161C);   // banners with transparency sit on a dark background
-        // Fitted at its own aspect: not every app's banner is 16:9.
+        // Fitted at its own aspect: not every app's banner is 16:9. Nearly 16:9 ones (YouTube's) fill the tile: fitted,
+        // the pixel they're short of showed as a dark line at the edge.
         int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
-        if (iw > 0 && ih > 0) {
+        float off = iw > 0 && ih > 0 ? Math.abs((float) iw / ih / ((float) TILE_W / TILE_H) - 1) : 0;
+        if (off > 0.03f) {
             float scale = Math.min((float) TILE_W / iw, (float) TILE_H / ih);
             int dw = Math.round(iw * scale), dh = Math.round(ih * scale);
             d.setBounds((TILE_W - dw) / 2, (TILE_H - dh) / 2, (TILE_W + dw) / 2, (TILE_H + dh) / 2);
