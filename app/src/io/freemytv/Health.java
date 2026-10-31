@@ -57,13 +57,17 @@ final class Health {
         });
     }
 
-    /** Stops the background processes, then reads again; `done` gets the memory freed (MB, on the main thread). */
+    /**
+     * Closes the TV apps left running (force-stop: am kill-all alone spares the previous app and anything with a
+     * service), then the cached rest; reads again and gives `done` the memory freed (MB, main thread; -1 without ADB).
+     */
     void free(java.util.function.IntConsumer done) {
         io.execute(() -> {
             long before = memory();
             boolean ok = false;
             try (Adb adb = Adb.connectQuiet(context)) {
                 if (adb != null) {
+                    for (String pkg : runningTvApps(adb)) adb.shell("am force-stop " + pkg);
                     adb.shell("am kill-all");
                     ok = true;
                 }
@@ -101,16 +105,7 @@ final class Health {
             String hw = adb.shell("dumpsys hardware_properties");
             cpuTemp = first(hw, "CPU temperatures:");
             throttleTemp = first(hw, "CPU throttling temperatures:");
-            // The TV apps (the ones with an icon) that have a process, not counting Lume.
-            Set<String> tvApps = tvApps();
-            Set<String> running = new HashSet<>();
-            for (String line : adb.shell("ps -A -o USER,NAME").split("\n")) {
-                String[] cols = line.trim().split("\\s+");
-                if (cols.length < 2 || !cols[0].startsWith("u0_a")) continue;
-                String pkg = cols[1].contains(":") ? cols[1].substring(0, cols[1].indexOf(':')) : cols[1];
-                if (tvApps.contains(pkg)) running.add(pkg);
-            }
-            backgroundApps = running.size();
+            backgroundApps = runningTvApps(adb).size();
         } catch (Exception e) {
             backgroundApps = -1;
             cpuTemp = Float.NaN;
@@ -130,6 +125,19 @@ final class Health {
         } catch (NumberFormatException e) {
             return Float.NaN;
         }
+    }
+
+    /** The TV apps (the ones with an icon) that have a process, not counting Lume. */
+    private Set<String> runningTvApps(Adb adb) throws java.io.IOException {
+        Set<String> tvApps = tvApps();
+        Set<String> running = new HashSet<>();
+        for (String line : adb.shell("ps -A -o USER,NAME").split("\n")) {
+            String[] cols = line.trim().split("\\s+");
+            if (cols.length < 2 || !cols[0].startsWith("u0_a")) continue;
+            String pkg = cols[1].contains(":") ? cols[1].substring(0, cols[1].indexOf(':')) : cols[1];
+            if (tvApps.contains(pkg)) running.add(pkg);
+        }
+        return running;
     }
 
     private Set<String> tvApps() {

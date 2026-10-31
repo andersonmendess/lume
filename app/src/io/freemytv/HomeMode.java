@@ -53,7 +53,7 @@ final class HomeMode {
      * your brand's, see the README). The TV's own home screen and screensaver are added at switch time.
      */
     static final String[] DEBLOAT = {
-        "com.google.android.play.games", "com.google.android.youtube.tvmusic",        // Play Games, YouTube Music
+        "com.google.android.play.games",                                              // Play Games
         // TCL
         "com.tcl.magiconnectfree", "com.tcl.miracast",                                // screen mirroring apps
         "com.tcl.waterfall.overseas", "com.tcl.channelplus",                          // TCL Channel and its Live TV
@@ -300,7 +300,8 @@ final class HomeMode {
                 Set<String> disabledNow = packages(adb, "-d");
                 boolean reverted = s.optBoolean("homeReverted");
                 String home = s.optString("originalHome", "");
-                Set<String> wanted = new HashSet<>(stringList(s, "disabled"));
+                // Only what's on today's list: an app taken off DEBLOAT stays on once turned back on.
+                Set<String> wanted = new HashSet<>();
                 for (String pkg : targets(home, s.optString("originalDream", ""))) {
                     if (!reverted || !(pkg.equals(packageOf(home)) || pkg.equals(GOOGLE_SETUP))) wanted.add(pkg);
                 }
