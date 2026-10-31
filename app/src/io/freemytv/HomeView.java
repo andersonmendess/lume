@@ -129,7 +129,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private List<HomeApps.Item> shelf = new ArrayList<>();
     private Spring[] tileFocus = new Spring[0];
     private RectF[] tileRects = new RectF[0];
-    private final Map<String, Bitmap> crispLogos = new HashMap<>();   // logos already sized for the focused tile
+    private final Map<Bitmap, Bitmap> crispLogos = new HashMap<>();   // logos already sized for the focused tile
     /** Each app's tile like its Apple TV icon: brand colors (top, bottom) and logo (0 = as is, 1 = white, 2 = dark). */
     private static final Map<String, int[]> TILE_STYLE = new HashMap<>();
     static {
@@ -1210,6 +1210,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             x += tw + gap;
         }
         crispLogos.clear();
+        fillGradients.clear();
     }
 
     /** Shelf layer: the glass bar and its shadow (it only changes with the background). */
@@ -1313,8 +1314,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             // The icon's own top-to-bottom gradient, stretched over the card from where the icon starts and ends.
             Bitmap lg = crispLogo(it, false);
             float ih = lg == null ? cell.height() : lg.getHeight() * s / (1 + FOCUS_GROW);
-            tileFill.setShader(new LinearGradient(0, cell.centerY() - ih / 2, 0, cell.centerY() + ih / 2,
-                    it.fill, it.fillBottom, Shader.TileMode.CLAMP));
+            tileFill.setShader(fillGradient(it, cell.centerY() - ih / 2, cell.centerY() + ih / 2));
             c.drawRoundRect(cell, r, r, tileFill);
             tileFill.setShader(null);
             drawLogo(c, it, cell, s, 0);
@@ -1332,10 +1332,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(cell, r, r, tileFill);
             tileFill.setShader(null);
             if (fc > 0.01f) {
-                tileFill.setShader(new LinearGradient(0, cell.top, 0, cell.top + cell.height() * 0.5f,
-                        Ui.alpha(0xFFFFFFFF, 0.08f * fc), 0x00FFFFFF, Shader.TileMode.CLAMP));
+                setSheen(tileFill, sheenDown, 0, cell.top, 1, cell.height() * 0.5f, 0.08f * fc);
                 c.drawRoundRect(cell, r, r, tileFill);
                 tileFill.setShader(null);
+                tileFill.setAlpha(255);
             }
             drawLogo(c, it, cell, s, style[2]);
         } else if (it.logo != null) {
@@ -1385,6 +1385,36 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return g;
     }
 
+    // Icon-only apps' card gradient, one per item (its colors never change), placed like the tile styles.
+    private final Map<HomeApps.Item, LinearGradient> fillGradients = new HashMap<>();
+
+    private Shader fillGradient(HomeApps.Item it, float top, float bottom) {
+        LinearGradient g = fillGradients.get(it);
+        if (g == null) {
+            g = new LinearGradient(0, 0, 0, 1, it.fill, it.fillBottom, Shader.TileMode.CLAMP);
+            fillGradients.put(it, g);
+        }
+        tileMatrix.setScale(1, bottom - top);
+        tileMatrix.postTranslate(0, top);
+        g.setLocalMatrix(tileMatrix);
+        return g;
+    }
+
+    // Focus sheens: white to clear, faded by the paint's alpha; placed by matrix instead of a new shader per frame.
+    private final LinearGradient sheenDown = new LinearGradient(0, 0, 0, 1, 0xFFFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
+    private final LinearGradient sheenDiagonal = new LinearGradient(0, 0, 1, 1, 0xFFFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
+    private final LinearGradient rimDown = new LinearGradient(0, 0, 0, 1, 0xFFFFFFFF, 0x40FFFFFF, Shader.TileMode.CLAMP);   // 0.4 → 0.1 at alpha 0.4
+    private final Matrix sheenMatrix = new Matrix();
+
+    /** The unit gradient `g` stretched to (w × h) at (x, y), on `p` at `alpha`. */
+    private void setSheen(Paint p, LinearGradient g, float x, float y, float w, float h, float alpha) {
+        sheenMatrix.setScale(w, h);
+        sheenMatrix.postTranslate(x, y);
+        g.setLocalMatrix(sheenMatrix);
+        p.setShader(g);
+        p.setAlpha(Math.round(255 * Ui.clamp(alpha)));
+    }
+
     /**
      * Logo at its "optical" size (all with the same amount of ink, plus each one's own adjustment, never past 80% × 62%
      * of the tile), centered and already filtered down to the focused tile size: when focused it is drawn pixel for
@@ -1409,15 +1439,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Bitmap crispLogo(HomeApps.Item it, boolean dark) {
         Bitmap src = dark ? it.logoDark : it.logo;
         if (tileRects.length == 0) return src;
-        String key = it.key + "@" + System.identityHashCode(src) + "@" + Math.round(tileRects[0].width());
-        Bitmap cached = crispLogos.get(key);
+        // Keyed by the logo itself (no string per tile per frame); layoutShelf() clears it when the tile size changes.
+        Bitmap cached = crispLogos.get(src);
         if (cached != null) return cached;
         float bw = tileRects[0].width() * (1 + FOCUS_GROW), bh = tileRects[0].height() * (1 + FOCUS_GROW);
         float lw = src.getWidth(), lh = src.getHeight();
         float scale = (float) Math.sqrt(bw * bh * 0.085f / (lw * lh * Math.max(0.08f, it.logoInk))) * it.logoScale;
         scale = Math.min(scale, Math.min(bw * 0.76f / lw, bh * 0.58f / lh));
         Bitmap out = downscale(src, Math.round(lw * scale), Math.round(lh * scale));
-        crispLogos.put(key, out);
+        crispLogos.put(src, out);
         return out;
     }
 
@@ -1868,8 +1898,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.clipPath(clip);
         if (image != null) c.drawBitmap(image, null, cell, bitmapPaint);
         if (f > 0.01f) {
-            sheen.setShader(new LinearGradient(0, cell.top, 0, cell.top + cell.height() * 0.5f,
-                    Ui.alpha(0xFFFFFFFF, 0.1f * fc), 0x00FFFFFF, Shader.TileMode.CLAMP));
+            setSheen(sheen, sheenDown, 0, cell.top, 1, cell.height() * 0.5f, 0.1f * fc);
             c.drawRect(cell, sheen);
         }
         if (fc < 0.99f) {
@@ -2746,8 +2775,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRect(cell, fill);
         }
         if (f > 0.01f) {
-            sheen.setShader(new LinearGradient(cell.left, cell.top, cell.left + cell.width() * 0.5f, cell.bottom,
-                    Ui.alpha(0xFFFFFFFF, 0.22f * f), 0x00FFFFFF, Shader.TileMode.CLAMP));
+            setSheen(sheen, sheenDiagonal, cell.left, cell.top, cell.width() * 0.5f, cell.height(), 0.22f * f);
             c.drawRect(cell, sheen);
         }
         if (i == synopsisIndex && synopsisLayout != null && p != null) {
@@ -2776,9 +2804,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (f > 0.01f) {
             // A soft rim (the lift and shadow carry the focus, as on Apple TV).
             rim.setStrokeWidth(1.5f * k);
-            rim.setShader(new LinearGradient(0, cell.top, 0, cell.bottom,
-                    Ui.alpha(0xFFFFFFFF, 0.4f * f), Ui.alpha(0xFFFFFFFF, 0.1f * f), Shader.TileMode.CLAMP));
+            setSheen(rim, rimDown, 0, cell.top, 1, cell.height(), 0.4f * f);
             c.drawRoundRect(cell, r, r, rim);
+            rim.setShader(null);
+            rim.setAlpha(255);
             rim.setStrokeWidth(2.5f * k);
         }
         if (p == null) return;
