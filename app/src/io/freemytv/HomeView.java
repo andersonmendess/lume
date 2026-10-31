@@ -498,6 +498,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     @Override public void onData() {
+        quoteValues = null;     // new prices: format them again
         updatePalette();
         checkNight(true);
         layoutStatus();
@@ -1230,6 +1231,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         glass(c, platterRect, radius, 1, true, outline);
     }
 
+    private String[] quoteValues;
+    private float[] quoteGlyphs, quoteWidths;
+    private long quotesAt;
+    private float quotesCap;
+
     /** Coin logo + price in the configured currency, in a row at the right end of the tab bar. */
     private void drawQuotes(Canvas c) {
         if (HomeData.coinCount() == 0) return;
@@ -1246,21 +1252,29 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float base = (L_TABBAR_TOP + L_TABBAR_H / 2) * k + Ui.halfCap(text);
         float cap = Ui.cap(text), gap = 6 * k, spacing = 24 * k;
         int n = HomeData.coinCount();
-        String[] values = new String[n];
-        float[] glyphs = new float[n];
-        float total = spacing * (n - 1);
-        for (int i = 0; i < n; i++) {
-            values[i] = HomeData.compact(data.prices[i]);
-            glyphs[i] = Glyphs.width(getContext(), HomeData.COINS[i], cap);
-            total += glyphs[i] + gap + text.measureText(values[i]);
+        // Formatted and measured only when the prices or the text size change: String.format on every frame of the
+        // hero layer was ~3 ms of its ~4 ms on the Mi TV Stick.
+        if (quoteValues == null || quoteValues.length != n || quotesAt != data.pricesAt || quotesCap != cap) {
+            quoteValues = new String[n];
+            quoteGlyphs = new float[n];
+            quoteWidths = new float[n];
+            for (int i = 0; i < n; i++) {
+                quoteValues[i] = HomeData.compact(data.prices[i]);
+                quoteGlyphs[i] = Glyphs.width(getContext(), HomeData.COINS[i], cap);
+                quoteWidths[i] = text.measureText(quoteValues[i]);
+            }
+            quotesAt = data.pricesAt;
+            quotesCap = cap;
         }
+        float total = spacing * (n - 1);
+        for (int i = 0; i < n; i++) total += quoteGlyphs[i] + gap + quoteWidths[i];
         float x = right - total;
         for (int i = 0; i < n; i++) {
-            Glyphs.coin(getContext(), c, HomeData.COINS[i], x + glyphs[i] / 2, base - cap / 2, cap,
+            Glyphs.coin(getContext(), c, HomeData.COINS[i], x + quoteGlyphs[i] / 2, base - cap / 2, cap,
                     Ui.alpha(tone(0xB38E8E93, 0x8CFFFFFF), fade));
-            x += glyphs[i] + gap;
-            c.drawText(values[i], x, base, text);
-            x += text.measureText(values[i]) + spacing;
+            x += quoteGlyphs[i] + gap;
+            c.drawText(quoteValues[i], x, base, text);
+            x += quoteWidths[i] + spacing;
         }
         text.setColor(textColor);
         String stale = HomeData.staleness(data.pricesAt, 5 * 60_000L);
